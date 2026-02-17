@@ -264,10 +264,12 @@ def format_bb_batch_card_admin(orders: list[dict], user_name: str) -> str:
     phones = "\n".join(f"<code>{o.get('phone', '—')}</code>" for o in orders)
     ids_str = ", ".join(f"#{o['id']}" for o in orders)
     status = status_map.get(first["status"], first["status"])
+    is_bb = any(o.get("is_exclusive") for o in orders)
+    bb_label = " (ББ🔥)" if is_bb else ""
     return (
         f"🛒 <b>Новый заказ {ids_str}</b>\n\n"
         f"👤 Клиент: @{user_name}\n"
-        f"📂 Категория: {_category_display(first)} (ББ🔥)\n"
+        f"📂 Категория: {_category_display(first)}{bb_label}\n"
         f"📱 Телефоны:\n\n"
         f"{phones}\n\n"
         f"📊 Подписей: {claimed_sigs}/{total_sigs}\n"
