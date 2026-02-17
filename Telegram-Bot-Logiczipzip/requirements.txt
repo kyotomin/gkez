@@ -1,0 +1,11 @@
+aiogram>=3.25.0
+aiosqlite>=0.22.1
+aiocryptopay>=0.4.8
+pyotp>=2.9.0
+openpyxl>=3.1.5
+aiocryptopay
+aiogram
+aiosqlite
+openpyxl
+pyotp
+asyncpg

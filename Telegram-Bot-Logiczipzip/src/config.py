@@ -1,0 +1,9 @@
+import os
+
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+
+SEED_ADMIN_IDS = [8181792806, 1083294848, 7699005037]
+
+CRYPTO_BOT_TOKEN = os.getenv("CRYPTO_BOT_TOKEN", "")
+
+DATABASE_URL = os.getenv("DATABASE_URL", "")
