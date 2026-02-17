@@ -278,6 +278,7 @@ def admin_order_detail_kb(order: dict, pending_docs: int = 0, doc_count: int = 0
         if unclaimed > 0:
             buttons.append([InlineKeyboardButton(text="➖ Уменьшить подписи", callback_data=f"admin_reduce_sigs_{order['id']}")])
         buttons.append([InlineKeyboardButton(text="❌ Отменить заказ (возврат)", callback_data=f"admin_cancel_order_{order['id']}")])
+        buttons.append([InlineKeyboardButton(text="✅ Подтвердить (проверка)", callback_data=f"admin_confirm_check_{order['id']}")])
         buttons.append([InlineKeyboardButton(text="⏹ Завершить досрочно", callback_data=f"admin_early_complete_{order['id']}")])
     if order["status"] == "completed":
         buttons.append([InlineKeyboardButton(text="📎 Прикрепить документ", callback_data=f"admin_send_screenshot_{order['id']}")])
