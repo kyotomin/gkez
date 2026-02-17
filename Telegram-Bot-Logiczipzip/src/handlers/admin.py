@@ -64,7 +64,7 @@ from src.db.operators import add_operator, remove_operator, get_all_operators, i
 from src.db.reputation import get_all_reputation_links, get_reputation_link, add_reputation_link, update_reputation_link, delete_reputation_link
 from src.db.reviews import get_all_reviews, get_review, delete_review
 from src.db.settings import is_admin_notifications_enabled, set_admin_notifications, get_faq_text, set_faq_text
-from src.db.documents import get_pending_doc_requests
+from src.db.documents import get_pending_doc_requests, get_order_doc_count, get_order_documents
 from src.utils.formatters import format_order_status, get_category_emoji
 
 router = Router()
@@ -72,7 +72,8 @@ router = Router()
 
 async def _admin_order_kb(order: dict):
     pending = await get_pending_doc_requests(order["id"])
-    return admin_order_detail_kb(order, pending_docs=pending)
+    doc_count = await get_order_doc_count(order["id"])
+    return admin_order_detail_kb(order, pending_docs=pending, doc_count=doc_count)
 
 
 class AdminFilter:
@@ -2298,6 +2299,164 @@ async def process_admin_screenshot(message: Message, state: FSMContext):
 @router.message(AdminOrderScreenshotStates.waiting_screenshot)
 async def process_admin_screenshot_not_photo(message: Message, state: FSMContext):
     await message.answer("❌ Пожалуйста, отправьте фото/скриншот.")
+
+
+@router.callback_query(F.data.startswith("admin_view_docs_"))
+async def admin_view_docs(callback: CallbackQuery):
+    if not await AdminFilter.check_staff(callback.from_user.id):
+        return
+    order_id = int(callback.data.split("_")[-1])
+    docs = await get_order_documents(order_id)
+    if not docs:
+        await callback.answer("📭 Скриншотов нет", show_alert=True)
+        return
+    order = await get_order(order_id)
+    cat_name = order.get("category_name", "—") if order else "—"
+    phone = order.get("phone", "—") if order else "—"
+    total_docs = len(docs)
+    from src.bot.instance import get_bot
+    _bot = get_bot()
+    if total_docs == 1:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        back_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 К заказу", callback_data=f"admin_order_{order_id}")]
+        ])
+        await _bot.send_photo(
+            callback.from_user.id,
+            docs[0]["file_id"],
+            caption=(
+                f"📄 <b>Скриншот заказа #{order_id}</b>\n\n"
+                f"📂 Категория: {cat_name}\n"
+                f"📱 Телефон: <code>{phone}</code>\n"
+                f"📄 Загружено: <b>1x</b>"
+            ),
+            reply_markup=back_kb,
+            parse_mode="HTML",
+        )
+    else:
+        buttons = []
+        row = []
+        for i in range(1, total_docs + 1):
+            row.append(InlineKeyboardButton(text=str(i), callback_data=f"adm_doc_{order_id}_{i}"))
+            if len(row) == 5:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+        buttons.append([InlineKeyboardButton(
+            text=f"📸 Показать все ({total_docs} шт)",
+            callback_data=f"adm_alldocs_{order_id}"
+        )])
+        buttons.append([InlineKeyboardButton(text="🔙 К заказу", callback_data=f"admin_order_{order_id}")])
+        try:
+            await callback.message.edit_text(
+                f"📁 <b>Скриншоты заказа #{order_id}</b>\n\n"
+                f"📂 Категория: {cat_name}\n"
+                f"📱 Телефон: <code>{phone}</code>\n"
+                f"📄 Загружено: <b>{total_docs}x</b>\n\n"
+                f"Выберите номер скриншота или посмотрите все:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+                parse_mode="HTML",
+            )
+        except Exception:
+            await callback.message.answer(
+                f"📁 <b>Скриншоты заказа #{order_id}</b>\n\n"
+                f"📂 Категория: {cat_name}\n"
+                f"📱 Телефон: <code>{phone}</code>\n"
+                f"📄 Загружено: <b>{total_docs}x</b>\n\n"
+                f"Выберите номер скриншота или посмотрите все:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+                parse_mode="HTML",
+            )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("adm_doc_"))
+async def admin_view_single_doc(callback: CallbackQuery):
+    if not await AdminFilter.check_staff(callback.from_user.id):
+        return
+    parts = callback.data.split("_")
+    order_id = int(parts[2])
+    doc_num = int(parts[3])
+    docs = await get_order_documents(order_id)
+    if not docs or doc_num < 1 or doc_num > len(docs):
+        await callback.answer("❌ Скриншот не найден", show_alert=True)
+        return
+    order = await get_order(order_id)
+    cat_name = order.get("category_name", "—") if order else "—"
+    phone = order.get("phone", "—") if order else "—"
+    doc = docs[doc_num - 1]
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К списку", callback_data=f"admin_view_docs_{order_id}")]
+    ])
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    from src.bot.instance import get_bot
+    _bot = get_bot()
+    await _bot.send_photo(
+        callback.from_user.id,
+        doc["file_id"],
+        caption=(
+            f"📄 <b>Скриншот {doc_num}/{len(docs)}</b>\n"
+            f"📦 Заказ: #{order_id}\n"
+            f"📂 Категория: {cat_name}\n"
+            f"📱 Телефон: <code>{phone}</code>"
+        ),
+        reply_markup=back_kb,
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("adm_alldocs_"))
+async def admin_view_all_docs(callback: CallbackQuery):
+    if not await AdminFilter.check_staff(callback.from_user.id):
+        return
+    order_id = int(callback.data.split("_")[-1])
+    docs = await get_order_documents(order_id)
+    if not docs:
+        await callback.answer("📭 Скриншотов нет", show_alert=True)
+        return
+    order = await get_order(order_id)
+    cat_name = order.get("category_name", "—") if order else "—"
+    phone = order.get("phone", "—") if order else "—"
+    from aiogram.types import InputMediaPhoto
+    from src.bot.instance import get_bot
+    _bot = get_bot()
+    if len(docs) <= 10:
+        media = []
+        for i, doc in enumerate(docs):
+            caption = (
+                f"📄 <b>Скриншот {i+1}/{len(docs)}</b> — Заказ #{order_id}\n"
+                f"📂 {cat_name} | 📱 <code>{phone}</code>"
+            ) if i == 0 else None
+            media.append(InputMediaPhoto(
+                media=doc["file_id"],
+                caption=caption,
+                parse_mode="HTML" if caption else None,
+            ))
+        await _bot.send_media_group(callback.from_user.id, media)
+    else:
+        for chunk_start in range(0, len(docs), 10):
+            chunk = docs[chunk_start:chunk_start + 10]
+            media = []
+            for i, doc in enumerate(chunk):
+                caption = (
+                    f"📄 <b>Скриншоты {chunk_start+1}—{chunk_start+len(chunk)}/{len(docs)}</b> — Заказ #{order_id}\n"
+                    f"📂 {cat_name} | 📱 <code>{phone}</code>"
+                ) if i == 0 else None
+                media.append(InputMediaPhoto(
+                    media=doc["file_id"],
+                    caption=caption,
+                    parse_mode="HTML" if caption else None,
+                ))
+            await _bot.send_media_group(callback.from_user.id, media)
+    await callback.answer(f"📄 Отправлено {len(docs)} скриншот(ов)")
 
 
 @router.callback_query(F.data == "admin_tickets")

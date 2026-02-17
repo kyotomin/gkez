@@ -256,7 +256,7 @@ def admin_batch_group_detail_kb(orders: list[dict], batch_group_id: str, page: i
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def admin_order_detail_kb(order: dict, pending_docs: int = 0) -> InlineKeyboardMarkup:
+def admin_order_detail_kb(order: dict, pending_docs: int = 0, doc_count: int = 0) -> InlineKeyboardMarkup:
     buttons = []
     if pending_docs > 0:
         buttons.append([InlineKeyboardButton(
@@ -282,6 +282,11 @@ def admin_order_detail_kb(order: dict, pending_docs: int = 0) -> InlineKeyboardM
     if order["status"] == "completed":
         buttons.append([InlineKeyboardButton(text="📎 Прикрепить документ", callback_data=f"admin_send_screenshot_{order['id']}")])
         buttons.append([InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"admin_cancel_completed_{order['id']}")])
+    if doc_count > 0:
+        buttons.append([InlineKeyboardButton(
+            text=f"📁 Посмотреть скрины ({doc_count} шт)",
+            callback_data=f"admin_view_docs_{order['id']}"
+        )])
     bg_id = order.get("batch_group_id")
     if bg_id:
         buttons.append([InlineKeyboardButton(text="🔙 К группе заказов", callback_data=f"admin_batch_{bg_id}")])
