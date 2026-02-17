@@ -28,3 +28,7 @@ args = "cd Telegram-Bot-Logiczipzip && python main.py"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[deployment]
+deploymentTarget = "vm"
+run = ["bash", "-c", "cd Telegram-Bot-Logiczipzip && python main.py"]
