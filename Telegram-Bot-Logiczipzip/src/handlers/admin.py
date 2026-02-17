@@ -64,9 +64,15 @@ from src.db.operators import add_operator, remove_operator, get_all_operators, i
 from src.db.reputation import get_all_reputation_links, get_reputation_link, add_reputation_link, update_reputation_link, delete_reputation_link
 from src.db.reviews import get_all_reviews, get_review, delete_review
 from src.db.settings import is_admin_notifications_enabled, set_admin_notifications, get_faq_text, set_faq_text
+from src.db.documents import get_pending_doc_requests
 from src.utils.formatters import format_order_status, get_category_emoji
 
 router = Router()
+
+
+async def _admin_order_kb(order: dict):
+    pending = await get_pending_doc_requests(order["id"])
+    return admin_order_detail_kb(order, pending_docs=pending)
 
 
 class AdminFilter:
@@ -1583,7 +1589,7 @@ async def admin_order_detail(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -1601,7 +1607,7 @@ async def admin_approve_order(callback: CallbackQuery):
     order = await get_order(order_id)
     await callback.message.edit_text(
         format_order_status(order),
-        reply_markup=admin_order_detail_kb(order),
+        reply_markup=await _admin_order_kb(order),
         parse_mode="HTML",
     )
     try:
@@ -1626,7 +1632,7 @@ async def admin_reject_order(callback: CallbackQuery):
     order = await get_order(order_id)
     await callback.message.edit_text(
         format_order_status(order),
-        reply_markup=admin_order_detail_kb(order),
+        reply_markup=await _admin_order_kb(order),
         parse_mode="HTML",
     )
     try:
@@ -1660,7 +1666,7 @@ async def admin_reset_totp(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -1701,7 +1707,7 @@ async def admin_early_complete(callback: CallbackQuery):
     unused = total - claimed
     await callback.message.edit_text(
         format_order_status(order),
-        reply_markup=admin_order_detail_kb(order),
+        reply_markup=await _admin_order_kb(order),
         parse_mode="HTML",
     )
     try:
@@ -1821,7 +1827,7 @@ async def admin_confirm_cancel_legacy(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -1849,7 +1855,7 @@ async def admin_cancel_full_refund(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -1892,7 +1898,7 @@ async def admin_cancel_partial_refund(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -1932,7 +1938,7 @@ async def admin_cancel_no_refund(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -2016,7 +2022,7 @@ async def admin_cc_with_refund(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -2061,7 +2067,7 @@ async def admin_cc_without_refund(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             format_order_status(order),
-            reply_markup=admin_order_detail_kb(order),
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except TelegramBadRequest:
@@ -2160,7 +2166,7 @@ async def process_reduce_sigs(message: Message, state: FSMContext):
     )
     await message.answer(
         format_order_status(order),
-        reply_markup=admin_order_detail_kb(order),
+        reply_markup=await _admin_order_kb(order),
         parse_mode="HTML",
     )
     try:
@@ -2252,25 +2258,41 @@ async def process_admin_screenshot(message: Message, state: FSMContext):
     try:
         from src.bot.instance import bot
         from src.db.documents import save_order_document
+        from src.db.database import get_pool
+        pool = await get_pool()
         for file_id in photos:
-            await bot.send_photo(
-                order["user_id"],
-                file_id,
-                caption=(
-                    f"📸 <b>Скриншот по заказу #{order_id}</b>\n\n"
-                    f"📂 Категория: {order.get('category_name', '—')}\n"
-                    f"📱 Телефон: <code>{order.get('phone', '—')}</code>"
-                ),
-                parse_mode="HTML",
-            )
             await save_order_document(order_id, order["user_id"], file_id, "admin")
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE doc_requests SET status = 'sent' WHERE order_id = $1 AND status = 'pending'",
+                order_id
+            )
+        cat_name = order.get('category_name', '—')
+        phone = order.get('phone', '—')
+        notify_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"📁 Посмотреть скрины ({len(photos)} шт)",
+                callback_data=f"my_docs_{order_id}"
+            )],
+        ])
+        await bot.send_message(
+            order["user_id"],
+            f"📸 <b>Новые документы по заказу #{order_id}</b>\n\n"
+            f"📂 Категория: {cat_name}\n"
+            f"📱 Телефон: <code>{phone}</code>\n"
+            f"📄 Загружено: <b>{len(photos)}x</b>\n\n"
+            f"Перейдите в 📋 Мои заказы → 📁 Документы для просмотра.",
+            reply_markup=notify_kb,
+            parse_mode="HTML",
+        )
         await message.answer(
-            f"✅ {len(photos)} скриншот(ов) отправлено клиенту для заказа #{order_id}.",
-            reply_markup=admin_order_detail_kb(order),
+            f"✅ {len(photos)} скриншот(ов) загружено для заказа #{order_id}.\n"
+            f"Клиент получил уведомление.",
+            reply_markup=await _admin_order_kb(order),
             parse_mode="HTML",
         )
     except Exception:
-        await message.answer("❌ Не удалось отправить скриншоты клиенту.", parse_mode="HTML")
+        await message.answer("❌ Не удалось загрузить скриншоты.", parse_mode="HTML")
 
 
 @router.message(AdminOrderScreenshotStates.waiting_screenshot)

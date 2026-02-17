@@ -20,6 +20,24 @@ async def get_order_documents(order_id: int) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+async def get_order_doc_count(order_id: int) -> int:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT COUNT(*) FROM order_documents WHERE order_id = $1",
+            order_id
+        ) or 0
+
+
+async def get_pending_doc_requests(order_id: int) -> int:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT COUNT(*) FROM doc_requests WHERE order_id = $1 AND status = 'pending'",
+            order_id
+        ) or 0
+
+
 async def get_user_documents(user_id: int) -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:

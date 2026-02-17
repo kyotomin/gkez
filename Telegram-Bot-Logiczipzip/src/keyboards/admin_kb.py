@@ -256,8 +256,13 @@ def admin_batch_group_detail_kb(orders: list[dict], batch_group_id: str, page: i
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def admin_order_detail_kb(order: dict) -> InlineKeyboardMarkup:
+def admin_order_detail_kb(order: dict, pending_docs: int = 0) -> InlineKeyboardMarkup:
     buttons = []
+    if pending_docs > 0:
+        buttons.append([InlineKeyboardButton(
+            text=f"🔴 Клиент запросил документы x{pending_docs}",
+            callback_data=f"admin_send_screenshot_{order['id']}"
+        )])
     if order["status"] in ("pending_review", "pending_confirmation"):
         buttons.append([
             InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"admin_approve_{order['id']}"),

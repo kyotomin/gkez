@@ -5,7 +5,7 @@ from src.db.orders import get_user_orders, get_order, update_order_status, cance
 from src.db.users import is_user_blocked, get_user, update_balance
 from src.db.admins import get_admin_ids
 from src.db.categories import get_category
-from src.db.documents import get_user_orders_with_documents, get_order_documents
+from src.db.documents import get_user_orders_with_documents, get_order_documents, get_order_doc_count
 from src.utils.formatters import format_order_status, format_batch_group_status
 from src.keyboards.user_kb import orders_list_kb, order_detail_kb, main_menu_kb, batch_group_detail_kb
 from src.bot.instance import get_bot
@@ -116,7 +116,8 @@ async def view_order(callback: CallbackQuery):
         await callback.answer("❌ Заказ не найден", show_alert=True)
         return
     text = format_order_status(order)
-    kb = order_detail_kb(order)
+    doc_count = await get_order_doc_count(order_id)
+    kb = order_detail_kb(order, doc_count=doc_count)
     await callback.message.edit_text(
         text,
         reply_markup=kb,
@@ -426,20 +427,187 @@ async def show_order_documents(callback: CallbackQuery):
     order = await get_order(order_id)
     cat_name = order.get("category_name", "—") if order else "—"
     phone = order.get("phone", "—") if order else "—"
-    bot = get_bot()
-    for i, doc in enumerate(docs):
+    total_docs = len(docs)
+    if total_docs == 1:
+        buttons = []
+        buttons.append([InlineKeyboardButton(text="🔙 К документам", callback_data="my_documents_list")])
         try:
-            await bot.send_photo(
-                callback.from_user.id,
-                doc["file_id"],
-                caption=(
-                    f"📄 <b>Документ {i + 1}/{len(docs)}</b>\n"
-                    f"📦 Заказ: #{order_id}\n"
-                    f"📂 Категория: {cat_name}\n"
-                    f"📱 Телефон: <code>{phone}</code>"
-                ),
+            await callback.message.delete()
+        except Exception:
+            pass
+        bot = get_bot()
+        await bot.send_photo(
+            callback.from_user.id,
+            docs[0]["file_id"],
+            caption=(
+                f"📄 <b>Документ по заказу #{order_id}</b>\n\n"
+                f"📂 Категория: {cat_name}\n"
+                f"📱 Телефон: <code>{phone}</code>\n"
+                f"📄 Загружено: <b>1x</b>"
+            ),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            parse_mode="HTML",
+        )
+    else:
+        buttons = []
+        row = []
+        for i in range(1, total_docs + 1):
+            row.append(InlineKeyboardButton(text=str(i), callback_data=f"view_doc_{order_id}_{i}"))
+            if len(row) == 5:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+        buttons.append([InlineKeyboardButton(
+            text=f"📸 Показать все ({total_docs} шт)",
+            callback_data=f"view_all_docs_{order_id}"
+        )])
+        buttons.append([InlineKeyboardButton(text="🔙 К документам", callback_data="my_documents_list")])
+        try:
+            await callback.message.edit_text(
+                f"📁 <b>Документы заказа #{order_id}</b>\n\n"
+                f"📂 Категория: {cat_name}\n"
+                f"📱 Телефон: <code>{phone}</code>\n"
+                f"📄 Загружено: <b>{total_docs}x</b>\n\n"
+                f"Выберите номер документа или посмотрите все:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
                 parse_mode="HTML",
             )
         except Exception:
-            pass
+            await callback.message.answer(
+                f"📁 <b>Документы заказа #{order_id}</b>\n\n"
+                f"📂 Категория: {cat_name}\n"
+                f"📱 Телефон: <code>{phone}</code>\n"
+                f"📄 Загружено: <b>{total_docs}x</b>\n\n"
+                f"Выберите номер документа или посмотрите все:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+                parse_mode="HTML",
+            )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("view_doc_"))
+async def view_single_doc(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    order_id = int(parts[2])
+    doc_num = int(parts[3])
+    docs = await get_order_documents(order_id)
+    if not docs or doc_num < 1 or doc_num > len(docs):
+        await callback.answer("❌ Документ не найден", show_alert=True)
+        return
+    if docs[0]["user_id"] != callback.from_user.id:
+        await callback.answer("❌ Это не ваши документы", show_alert=True)
+        return
+    order = await get_order(order_id)
+    cat_name = order.get("category_name", "—") if order else "—"
+    phone = order.get("phone", "—") if order else "—"
+    doc = docs[doc_num - 1]
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К списку", callback_data=f"my_docs_{order_id}")]
+    ])
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    bot = get_bot()
+    await bot.send_photo(
+        callback.from_user.id,
+        doc["file_id"],
+        caption=(
+            f"📄 <b>Документ {doc_num}/{len(docs)}</b>\n"
+            f"📦 Заказ: #{order_id}\n"
+            f"📂 Категория: {cat_name}\n"
+            f"📱 Телефон: <code>{phone}</code>"
+        ),
+        reply_markup=back_kb,
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("view_all_docs_"))
+async def view_all_docs(callback: CallbackQuery):
+    order_id = int(callback.data.split("_")[-1])
+    docs = await get_order_documents(order_id)
+    if not docs:
+        await callback.answer("📭 Документов нет", show_alert=True)
+        return
+    if docs[0]["user_id"] != callback.from_user.id:
+        await callback.answer("❌ Это не ваши документы", show_alert=True)
+        return
+    order = await get_order(order_id)
+    cat_name = order.get("category_name", "—") if order else "—"
+    phone = order.get("phone", "—") if order else "—"
+    bot = get_bot()
+    from aiogram.types import InputMediaPhoto
+    if len(docs) <= 10:
+        media = []
+        for i, doc in enumerate(docs):
+            caption = (
+                f"📄 <b>Документ {i+1}/{len(docs)}</b> — Заказ #{order_id}\n"
+                f"📂 {cat_name} | 📱 <code>{phone}</code>"
+            ) if i == 0 else None
+            media.append(InputMediaPhoto(
+                media=doc["file_id"],
+                caption=caption,
+                parse_mode="HTML" if caption else None,
+            ))
+        await bot.send_media_group(callback.from_user.id, media)
+    else:
+        for chunk_start in range(0, len(docs), 10):
+            chunk = docs[chunk_start:chunk_start + 10]
+            media = []
+            for i, doc in enumerate(chunk):
+                idx = chunk_start + i + 1
+                caption = (
+                    f"📄 <b>Документы {chunk_start+1}—{chunk_start+len(chunk)}/{len(docs)}</b> — Заказ #{order_id}\n"
+                    f"📂 {cat_name} | 📱 <code>{phone}</code>"
+                ) if i == 0 else None
+                media.append(InputMediaPhoto(
+                    media=doc["file_id"],
+                    caption=caption,
+                    parse_mode="HTML" if caption else None,
+                ))
+            await bot.send_media_group(callback.from_user.id, media)
     await callback.answer(f"📄 Отправлено {len(docs)} документ(ов)")
+
+
+@router.callback_query(F.data == "my_documents_list")
+async def back_to_documents_list(callback: CallbackQuery):
+    orders_with_docs = await get_user_orders_with_documents(callback.from_user.id)
+    if not orders_with_docs:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        bot = get_bot()
+        await bot.send_message(
+            callback.from_user.id,
+            "📁 <b>Мои документы</b>\n\n"
+            "📭 У вас пока нет документов.",
+            parse_mode="HTML",
+        )
+        await callback.answer()
+        return
+    buttons = []
+    STATUS_EMOJI = {"active": "🟢", "preorder": "⏳", "completed": "✅", "rejected": "❌", "expired": "⏰", "pending_review": "🟡", "pending_confirmation": "🟡"}
+    for o in orders_with_docs:
+        emoji = STATUS_EMOJI.get(o["status"], "📦")
+        cat = o.get("category_name") or "—"
+        buttons.append([InlineKeyboardButton(
+            text=f"{emoji} #{o['order_id']} — {cat} ({o['doc_count']} док.)",
+            callback_data=f"my_docs_{o['order_id']}"
+        )])
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    bot = get_bot()
+    await bot.send_message(
+        callback.from_user.id,
+        f"📁 <b>Мои документы</b>\n\n"
+        f"Выберите заказ для просмотра документов:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML",
+    )
+    await callback.answer()

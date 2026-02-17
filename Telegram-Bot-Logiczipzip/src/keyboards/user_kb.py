@@ -243,7 +243,7 @@ def batch_group_detail_kb(orders: list[dict], batch_group_id: str, page: int = 0
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def order_detail_kb(order: dict) -> InlineKeyboardMarkup:
+def order_detail_kb(order: dict, doc_count: int = 0) -> InlineKeyboardMarkup:
     buttons = []
     if order["status"] == "active":
         claimed = order.get("signatures_claimed", 0)
@@ -264,6 +264,11 @@ def order_detail_kb(order: dict) -> InlineKeyboardMarkup:
                 text="✅ Завершить заказ",
                 callback_data=f"complete_order_{order['id']}"
             )])
+    if doc_count > 0:
+        buttons.append([InlineKeyboardButton(
+            text=f"📁 Посмотреть скрины ({doc_count} шт)",
+            callback_data=f"my_docs_{order['id']}"
+        )])
     if order["status"] == "preorder":
         buttons.append([InlineKeyboardButton(
             text="❌ Отменить предзаказ",

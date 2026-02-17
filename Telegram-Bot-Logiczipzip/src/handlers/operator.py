@@ -187,18 +187,7 @@ async def process_doc_photo(message: Message, state: FSMContext):
     try:
         from src.bot.instance import bot
         from src.db.documents import save_order_document
-        await bot.send_photo(
-            order["user_id"],
-            photo.file_id,
-            caption=(
-                f"📄 <b>Документ по заказу #{order_id}</b>\n\n"
-                f"📂 Категория: {order.get('category_name', '—')}\n"
-                f"📱 Телефон: <code>{order.get('phone', '—')}</code>\n"
-                f"📊 Подпись: #{sig_num}\n\n"
-                f"Документ, подтверждающий подписание."
-            ),
-            parse_mode="HTML",
-        )
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await save_order_document(order_id, order["user_id"], photo.file_id, "operator")
         from src.db.database import get_pool
         pool = await get_pool()
@@ -207,12 +196,31 @@ async def process_doc_photo(message: Message, state: FSMContext):
                 "UPDATE doc_requests SET status = 'sent' WHERE order_id = $1 AND signature_num = $2",
                 order_id, sig_num
             )
+        cat_name = order.get('category_name', '—')
+        phone = order.get('phone', '—')
+        notify_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📁 Посмотреть скрин (1 шт)",
+                callback_data=f"my_docs_{order_id}"
+            )],
+        ])
+        await bot.send_message(
+            order["user_id"],
+            f"📸 <b>Новый документ по заказу #{order_id}</b>\n\n"
+            f"📂 Категория: {cat_name}\n"
+            f"📱 Телефон: <code>{phone}</code>\n"
+            f"📄 Загружено: <b>1x</b>\n\n"
+            f"Перейдите в 📋 Мои заказы → 📁 Документы для просмотра.",
+            reply_markup=notify_kb,
+            parse_mode="HTML",
+        )
         await message.answer(
-            f"✅ Документ отправлен клиенту для заказа #{order_id}, подпись #{sig_num}.",
+            f"✅ Документ загружен для заказа #{order_id}, подпись #{sig_num}.\n"
+            f"Клиент получил уведомление.",
             parse_mode="HTML",
         )
     except Exception:
-        await message.answer("❌ Не удалось отправить документ клиенту.", parse_mode="HTML")
+        await message.answer("❌ Не удалось загрузить документ.", parse_mode="HTML")
 
 
 @router.message(OperatorStates.waiting_doc_photos_batch, F.photo)
@@ -244,33 +252,41 @@ async def process_doc_photo_batch(message: Message, state: FSMContext):
         from src.bot.instance import bot
         from src.db.database import get_pool
         from src.db.documents import save_order_document
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         pool = await get_pool()
         for i, file_id in enumerate(photos):
             doc_num = sig_num + i
-            await bot.send_photo(
-                order["user_id"],
-                file_id,
-                caption=(
-                    f"📄 <b>Документ по заказу #{order_id}</b>\n\n"
-                    f"📂 Категория: {order.get('category_name', '—')}\n"
-                    f"📱 Телефон: <code>{order.get('phone', '—')}</code>\n"
-                    f"📊 Подпись: #{doc_num}\n\n"
-                    f"Документ {i + 1} из {qty}."
-                ),
-                parse_mode="HTML",
-            )
             await save_order_document(order_id, order["user_id"], file_id, "operator")
             async with pool.acquire() as conn:
                 await conn.execute(
                     "UPDATE doc_requests SET status = 'sent' WHERE order_id = $1 AND signature_num = $2",
                     order_id, doc_num
                 )
+        cat_name = order.get('category_name', '—')
+        phone = order.get('phone', '—')
+        notify_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"📁 Посмотреть скрины ({qty} шт)",
+                callback_data=f"my_docs_{order_id}"
+            )],
+        ])
+        await bot.send_message(
+            order["user_id"],
+            f"📸 <b>Новые документы по заказу #{order_id}</b>\n\n"
+            f"📂 Категория: {cat_name}\n"
+            f"📱 Телефон: <code>{phone}</code>\n"
+            f"📄 Загружено: <b>{qty}x</b>\n\n"
+            f"Перейдите в 📋 Мои заказы → 📁 Документы для просмотра.",
+            reply_markup=notify_kb,
+            parse_mode="HTML",
+        )
         await message.answer(
-            f"✅ Все {qty} документов отправлены клиенту для заказа #{order_id}.",
+            f"✅ Все {qty} документов загружено для заказа #{order_id}.\n"
+            f"Клиент получил уведомление.",
             parse_mode="HTML",
         )
     except Exception:
-        await message.answer("❌ Не удалось отправить документы клиенту.", parse_mode="HTML")
+        await message.answer("❌ Не удалось загрузить документы.", parse_mode="HTML")
 
 
 @router.message(OperatorStates.waiting_doc_photo)
