@@ -21,6 +21,7 @@ class AdminAccountStates(StatesGroup):
     waiting_bulk_limit_value = State()
     waiting_reset_account_id = State()
     waiting_mass_priority_value = State()
+    waiting_totp_edit = State()
 
 
 class AdminTicketStates(StatesGroup):

@@ -135,6 +135,7 @@ def admin_account_detail_kb(account_id: int, operator_assigned: bool = False, is
             InlineKeyboardButton(text="✏️ Изменить подписи", callback_data=f"admin_edit_sigs_{account_id}"),
             InlineKeyboardButton(text="⭐️ Приоритет", callback_data=f"admin_set_prio_{account_id}"),
         ],
+        [InlineKeyboardButton(text="🔑 Изменить TOTP", callback_data=f"admin_edit_totp_{account_id}")],
         [InlineKeyboardButton(text=op_text, callback_data=f"admin_acc_assign_op_{account_id}")],
         [InlineKeyboardButton(text=enable_text, callback_data=f"admin_toggle_acc_{account_id}")],
     ]

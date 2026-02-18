@@ -62,6 +62,15 @@ async def is_account_exhausted(account_id: int) -> bool:
         return cnt == 0
 
 
+async def update_account_totp(account_id: int, new_totp: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE accounts SET totp_secret = $1 WHERE id = $2",
+            new_totp, account_id
+        )
+
+
 def parse_accounts_text(text: str) -> list[dict]:
     results = []
     lines = [l.strip() for l in text.strip().split("\n")]

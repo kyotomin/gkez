@@ -37,6 +37,7 @@ from src.db.accounts import (
     mass_enable_all_accounts, mass_disable_all_accounts,
     mass_enable_by_phones, mass_disable_by_phones, get_accounts_count_by_status,
     get_accounts_availability_by_phones, get_availability_summary,
+    update_account_totp,
 )
 from src.db.orders import get_all_orders, get_order, update_order_status, get_preorders_with_users, cancel_preorder, get_user_orders, set_order_totp_limit, get_order_totp_limit, compute_effective_totp_limit, reduce_order_signatures, reset_totp_refreshes, search_orders
 from src.db.tickets import get_all_tickets, get_ticket, get_ticket_messages, add_ticket_message, close_ticket, search_tickets
@@ -950,6 +951,90 @@ async def admin_toggle_account(callback: CallbackQuery):
         op_name = op.get("username") or str(op_id) if op else str(op_id)
         op_line = f"├ Оператор: 👷 {op_name}\n"
     await callback.message.edit_text(
+        f"📱 <b>Аккаунт #{account['id']}</b>\n\n"
+        f"├ Телефон: <code>{account['phone']}</code>\n"
+        f"├ Пароль: <code>{account['password']}</code>\n"
+        f"├ TOTP: <code>{account['totp_secret'][:8]}...</code>\n"
+        f"├ Приоритет: ⭐️ {prio}\n"
+        f"{op_line}"
+        f"├ Статус: {pool_status}\n"
+        f"└ Доступность: {enabled_status}\n\n"
+        f"📊 <b>Подписи:</b>\n{sig_text}",
+        reply_markup=admin_account_detail_kb(account_id, operator_assigned=bool(op_id), is_enabled=is_enabled),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("admin_edit_totp_"))
+async def admin_edit_totp_start(callback: CallbackQuery, state: FSMContext):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    account_id = int(callback.data.split("admin_edit_totp_")[1])
+    account = await get_account(account_id)
+    if not account:
+        await callback.answer("❌ Аккаунт не найден", show_alert=True)
+        return
+    await state.set_state(AdminAccountStates.waiting_totp_edit)
+    await state.update_data(totp_edit_account_id=account_id)
+    try:
+        await callback.message.edit_text(
+            f"🔑 <b>Изменение TOTP для аккаунта #{account_id}</b>\n"
+            f"📱 <code>{account['phone']}</code>\n\n"
+            f"Текущий TOTP: <code>{account['totp_secret']}</code>\n\n"
+            f"Отправьте новый TOTP-секрет:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Отмена", callback_data=f"admin_acc_{account_id}")],
+            ]),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.message(AdminAccountStates.waiting_totp_edit)
+async def admin_edit_totp_process(message: Message, state: FSMContext):
+    if not await AdminFilter.check(message.from_user.id):
+        return
+    data = await state.get_data()
+    account_id = data.get("totp_edit_account_id")
+    if not account_id:
+        await state.clear()
+        return
+    new_totp = message.text.strip()
+    if not new_totp:
+        await message.answer("❌ TOTP-секрет не может быть пустым.")
+        return
+    await update_account_totp(account_id, new_totp)
+    await state.clear()
+    await message.answer(
+        f"✅ TOTP для аккаунта #{account_id} обновлён.",
+        parse_mode="HTML",
+    )
+    account = await get_account(account_id)
+    if not account:
+        return
+    sigs = await get_account_signatures(account_id)
+    sig_text = ""
+    total_remaining = 0
+    for s in sigs:
+        max_s = s.get("max_signatures") if s.get("max_signatures") is not None else s.get("cat_max_signatures", 5)
+        used = s["used_signatures"]
+        remaining = max_s - used
+        total_remaining += max(0, remaining)
+        status = "🟢" if remaining > 0 else "🔴"
+        sig_text += f"  {status} {s['category_name']}: {used}/{max_s}\n"
+    pool_status = "🟢 В пуле" if total_remaining > 0 else "🔴 Исчерпан"
+    is_enabled = bool(account.get("is_enabled", 1))
+    enabled_status = "🟢 Включён" if is_enabled else "🔴 Отключён"
+    prio = account.get("priority", 0) or 0
+    op_id = account.get("operator_telegram_id")
+    op_line = "├ Оператор: —\n"
+    if op_id:
+        op = await get_operator(op_id)
+        op_name = op.get("username") or str(op_id) if op else str(op_id)
+        op_line = f"├ Оператор: 👷 {op_name}\n"
+    await message.answer(
         f"📱 <b>Аккаунт #{account['id']}</b>\n\n"
         f"├ Телефон: <code>{account['phone']}</code>\n"
         f"├ Пароль: <code>{account['password']}</code>\n"
