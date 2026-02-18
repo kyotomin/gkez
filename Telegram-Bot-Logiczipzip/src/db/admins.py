@@ -63,7 +63,7 @@ async def get_admin_stats(admin_telegram_id: int, date_from: str = None, date_to
     async with pool.acquire() as conn:
         if date_from and date_to:
             accounts_added = await conn.fetchval(
-                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND a.created_at::date BETWEEN $2::date AND $3::date",
+                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date BETWEEN $2::date AND $3::date",
                 admin_telegram_id, date_from, date_to
             )
             row = await conn.fetchrow(
@@ -72,12 +72,12 @@ async def get_admin_stats(admin_telegram_id: int, date_from: str = None, date_to
                     FROM orders o
                     JOIN accounts a ON o.account_id = a.id
                     WHERE a.added_by_admin_id = $1 AND o.status IN ('active', 'completed')
-                    AND o.created_at::date BETWEEN $2::date AND $3::date""",
+                    AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date BETWEEN $2::date AND $3::date""",
                 admin_telegram_id, date_from, date_to
             )
         elif date_from:
             accounts_added = await conn.fetchval(
-                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND a.created_at::date = $2::date",
+                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $2::date",
                 admin_telegram_id, date_from
             )
             row = await conn.fetchrow(
@@ -86,7 +86,7 @@ async def get_admin_stats(admin_telegram_id: int, date_from: str = None, date_to
                     FROM orders o
                     JOIN accounts a ON o.account_id = a.id
                     WHERE a.added_by_admin_id = $1 AND o.status IN ('active', 'completed')
-                    AND o.created_at::date = $2::date""",
+                    AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $2::date""",
                 admin_telegram_id, date_from
             )
         else:

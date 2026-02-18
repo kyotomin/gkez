@@ -824,7 +824,7 @@ async def get_accounts_availability_by_date(date_str: str) -> list[dict]:
                FROM accounts a
                JOIN account_signatures s ON a.id = s.account_id
                JOIN categories c ON s.category_id = c.id
-               WHERE a.created_at::date = $1::date
+               WHERE (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $1::date
                ORDER BY a.phone, c.name""",
             date_str
         )
@@ -844,7 +844,7 @@ async def get_stats_by_date(date_str: str) -> list[dict]:
                JOIN accounts a ON o.account_id = a.id
                JOIN categories c ON o.category_id = c.id
                JOIN account_signatures s ON s.account_id = a.id AND s.category_id = c.id
-               WHERE o.created_at::date = $1::date
+               WHERE (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $1::date
                  AND o.status != 'rejected'
                GROUP BY a.id, a.phone, c.name, s.max_signatures, c.max_signatures, s.used_signatures
                ORDER BY a.phone, c.name""",
@@ -860,11 +860,11 @@ async def get_sales_stats_by_period(date_from: str = None, date_to: str = None) 
         params = []
         idx = 1
         if date_from:
-            conditions.append(f"o.created_at::date >= ${idx}::date")
+            conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date >= ${idx}::date")
             params.append(date_from)
             idx += 1
         if date_to:
-            conditions.append(f"o.created_at::date <= ${idx}::date")
+            conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date <= ${idx}::date")
             params.append(date_to)
             idx += 1
         where = " AND ".join(conditions)
@@ -927,22 +927,23 @@ async def restore_account_signatures(account_id: int, category_id: int, count: i
         )
 
 
+def normalize_phone(p: str) -> str:
+    p = p.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if p.startswith("+7") and len(p) == 12:
+        p = p[2:]
+    elif p.startswith("8") and len(p) == 11:
+        p = p[1:]
+    elif p.startswith("7") and len(p) == 11:
+        p = p[1:]
+    return p
+
+
 async def get_accounts_availability_by_phones(phones: list[str]) -> list[dict]:
     if not phones:
         return []
     pool = await get_pool()
     async with pool.acquire() as conn:
-        normalized = []
-        for p in phones:
-            p = p.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-            if p.startswith("8") and len(p) == 11:
-                p = "+7" + p[1:]
-            elif p.startswith("7") and len(p) == 11:
-                p = "+" + p
-            elif not p.startswith("+") and len(p) == 10:
-                p = "+7" + p
-            normalized.append(p)
-        normalized = list(set(normalized))
+        normalized = list(set(normalize_phone(p) for p in phones if p.strip()))
         rows = await conn.fetch(
             """SELECT a.id, a.phone, a.password, a.created_at,
                       c.name as category_name,

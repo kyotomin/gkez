@@ -3095,8 +3095,9 @@ async def admin_export_date_process(message: Message, state: FSMContext):
 async def admin_export_today(callback: CallbackQuery):
     if not await AdminFilter.check(callback.from_user.id):
         return
-    from datetime import datetime as _dt
-    today = str(_dt.utcnow().date())
+    from datetime import datetime as _dt, timezone, timedelta
+    msk = timezone(timedelta(hours=3))
+    today = str(_dt.now(msk).date())
     rows = await get_accounts_availability_by_date(today)
     if not rows:
         await callback.answer("❌ Нет данных за сегодня", show_alert=True)
@@ -3149,10 +3150,13 @@ async def admin_export_phones_process(message: Message, state: FSMContext):
             reply_markup=admin_stats_menu_kb(),
         )
         return
+    from src.db.accounts import normalize_phone
+    unique_phones = list(set(normalize_phone(p) for p in lines))
+    total_input = len(unique_phones)
     rows = await get_accounts_availability_by_phones(lines)
     if not rows:
         await message.answer(
-            f"❌ Аккаунты по указанным номерам не найдены ({len(lines)} номеров).",
+            f"❌ Аккаунты по указанным номерам не найдены ({total_input} номеров).",
             reply_markup=admin_stats_menu_kb(),
         )
         return
@@ -3166,7 +3170,7 @@ async def admin_export_phones_process(message: Message, state: FSMContext):
         doc = FSInputFile(path, filename="Наличие по номерам.xlsx")
         await message.answer_document(
             doc,
-            caption=f"📥 Выгрузка наличия по номерам\n📱 Найдено: {found_phones} из {len(lines)} номеров",
+            caption=f"📥 Выгрузка наличия по номерам\n📱 Найдено: {found_phones} из {total_input} номеров",
         )
     except Exception:
         await message.answer("❌ Ошибка при формировании файла.")
@@ -3259,8 +3263,9 @@ async def admin_sales_period(callback: CallbackQuery):
     if not await AdminFilter.check(callback.from_user.id):
         return
     period = callback.data.replace("sales_period_", "")
-    from datetime import datetime, timedelta
-    today = datetime.utcnow().date()
+    from datetime import datetime, timedelta, timezone
+    msk = timezone(timedelta(hours=3))
+    today = datetime.now(msk).date()
     date_from = None
     date_to = str(today)
     if period == "today":
@@ -5674,9 +5679,11 @@ async def admin_stat_view(callback: CallbackQuery):
     if not await AdminFilter.check(callback.from_user.id):
         return
     target_id = int(callback.data.split("admin_stat_view_")[1])
-    today = str(datetime.utcnow().date())
-    week_ago = str(datetime.utcnow().date() - timedelta(days=7))
-    month_ago = str(datetime.utcnow().date() - timedelta(days=30))
+    from datetime import timezone as _tz
+    msk = _tz(timedelta(hours=3))
+    today = str(datetime.now(msk).date())
+    week_ago = str(datetime.now(msk).date() - timedelta(days=7))
+    month_ago = str(datetime.now(msk).date() - timedelta(days=30))
     stats_today, stats_week, stats_month, stats_all = await asyncio.gather(
         get_admin_stats(target_id, date_from=today),
         get_admin_stats(target_id, date_from=week_ago, date_to=today),
