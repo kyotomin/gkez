@@ -1672,17 +1672,20 @@ async def confirm_signature_sent(callback: CallbackQuery, state: FSMContext):
         from src.bot.instance import bot
         from src.keyboards.admin_kb import operator_confirm_sig_kb
         user_name = callback.from_user.username or callback.from_user.full_name or str(callback.from_user.id)
+        from src.utils.formatters import get_category_emoji
         custom_op = order.get('custom_operator_name')
         custom_line = f"🏢 Оператор: {custom_op}\n" if custom_op else ""
         cat_name = order.get('category_name', '—')
+        cat_emoji = get_category_emoji(cat_name)
+        cat_display = f"{cat_emoji} {cat_name}" if cat_emoji else cat_name
         if custom_op:
-            cat_name = f"{cat_name} ({custom_op})"
+            cat_display = f"{cat_display} ({custom_op})"
         qty_line = f"🔢 Кол-во: <b>{pending_qty}</b>\n" if pending_qty > 1 else ""
         notify_text = (
             f"📝 <b>Подпись {claim_range}/{total} ожидает подтверждения</b>\n\n"
             f"👤 Клиент: @{user_name}\n"
             f"📦 Заказ: #{order_id}\n"
-            f"📂 Категория: {cat_name}\n"
+            f"📂 Категория: {cat_display}\n"
             f"{custom_line}"
             f"{qty_line}"
             f"📱 Телефон: <code>{order.get('phone', '—')}</code>\n\n"

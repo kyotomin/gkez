@@ -6,7 +6,7 @@ from src.db.users import is_user_blocked, get_user, update_balance
 from src.db.admins import get_admin_ids
 from src.db.categories import get_category
 from src.db.documents import get_user_orders_with_documents, get_order_documents, get_order_doc_count
-from src.utils.formatters import format_order_status, format_batch_group_status
+from src.utils.formatters import format_order_status, format_batch_group_status, get_category_emoji
 from src.keyboards.user_kb import orders_list_kb, order_detail_kb, main_menu_kb, batch_group_detail_kb
 from src.bot.instance import get_bot
 
@@ -184,15 +184,17 @@ async def confirm_complete_order(callback: CallbackQuery):
         from src.handlers.sim_sign import get_target_operator_ids
         user_name = callback.from_user.username or callback.from_user.full_name or str(callback.from_user.id)
         cat_name = order.get("category_name", "—")
+        cat_emoji = get_category_emoji(cat_name)
+        cat_display = f"{cat_emoji} {cat_name}" if cat_emoji else cat_name
         custom_op = order.get("custom_operator_name")
         if custom_op:
-            cat_name = f"{cat_name} ({custom_op})"
+            cat_display = f"{cat_display} ({custom_op})"
         claimed = order.get("signatures_claimed", 0)
         total = order.get("total_signatures", 1)
         notify_text = (
             f"📦 <b>Заказ #{order_id} завершён клиентом</b>\n\n"
             f"👤 Клиент: @{user_name}\n"
-            f"📂 Категория: {cat_name}\n"
+            f"📂 Категория: {cat_display}\n"
             f"📱 Телефон: <code>{order.get('phone', '—')}</code>\n"
             f"📊 Подписей: {claimed}/{total}"
         )
@@ -261,7 +263,9 @@ async def confirm_cancel_preorder(callback: CallbackQuery):
         return
 
     category = await get_category(order["category_id"])
-    cat_name = category["name"] if category else "—"
+    raw_cat_name = category["name"] if category else "—"
+    cat_emoji = get_category_emoji(raw_cat_name)
+    cat_name = f"{cat_emoji} {raw_cat_name}" if cat_emoji else raw_cat_name
     total_price = order.get("price_paid", 0)
     user = await get_user(callback.from_user.id)
     username = f"@{user['username']}" if user and user.get("username") else str(callback.from_user.id)

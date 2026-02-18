@@ -22,6 +22,13 @@ def _get_cat_header_fill(cat_name: str) -> PatternFill:
     return PatternFill(start_color=color, end_color=color, fill_type="solid")
 
 
+def _fmt_price(val) -> str:
+    val = float(val or 0)
+    if val == int(val):
+        return f"{int(val)}$"
+    return f"{val}$"
+
+
 def generate_availability_excel(rows: list[dict], title: str = "Наличие") -> str:
     wb = Workbook()
     ws = wb.active
@@ -38,11 +45,13 @@ def generate_availability_excel(rows: list[dict], title: str = "Наличие")
 
     categories = sorted(set(r["category_name"] for r in rows))
 
-    headers = ["Логин", "Пароль"]
+    headers = ["Логин:", "Пароль:"]
     header_fills = [header_fill, header_fill]
     for cat in categories:
         headers.append(cat)
         header_fills.append(_get_cat_header_fill(cat))
+    headers.append("Сумма:")
+    header_fills.append(header_fill)
 
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -70,6 +79,7 @@ def generate_availability_excel(rows: list[dict], title: str = "Наличие")
     red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 
     row_idx = 2
+    grand_total = 0.0
     for phone in sorted(accounts.keys()):
         cell_phone = ws.cell(row=row_idx, column=1, value=phone)
         cell_phone.border = thin_border
@@ -79,22 +89,38 @@ def generate_availability_excel(rows: list[dict], title: str = "Наличие")
         cell_pass.border = thin_border
         cell_pass.alignment = Alignment(horizontal="left")
 
+        row_total = 0.0
         for cat_idx, cat in enumerate(categories):
             col = 3 + cat_idx
             data = accounts[phone].get(cat, {"remaining": 0, "max": 0, "price": 0})
-            price_int = int(data["price"]) if data["price"] == int(data["price"]) else data["price"]
-            cell_val = f"{data['remaining']}-{data['max']}${price_int}"
+            used = data["max"] - data["remaining"]
+            cat_revenue = used * float(data["price"])
+            row_total += cat_revenue
+            cell_val = f"{data['remaining']}/{data['max']} - {_fmt_price(cat_revenue)}"
             cell = ws.cell(row=row_idx, column=col, value=cell_val)
             cell.border = thin_border
             cell.alignment = Alignment(horizontal="center")
             cell.fill = green_fill if data["remaining"] > 0 else red_fill
 
+        sum_col = 3 + len(categories)
+        cell_sum = ws.cell(row=row_idx, column=sum_col, value=f"{_fmt_price(row_total)}")
+        cell_sum.border = thin_border
+        cell_sum.alignment = Alignment(horizontal="center")
+        cell_sum.font = Font(bold=True)
+        grand_total += row_total
         row_idx += 1
+
+    row_idx += 1
+    sum_col = 3 + len(categories)
+    cell_total = ws.cell(row=row_idx, column=sum_col, value=f"{_fmt_price(grand_total)}")
+    cell_total.font = Font(bold=True, size=12)
+    cell_total.alignment = Alignment(horizontal="center")
+    cell_total.border = thin_border
 
     ws.column_dimensions["A"].width = 16
     ws.column_dimensions["B"].width = 16
     for col_idx in range(3, len(headers) + 1):
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 14
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 16
 
     fd, path = tempfile.mkstemp(suffix=".xlsx", prefix="availability_")
     os.close(fd)
@@ -121,14 +147,12 @@ def generate_sales_excel(rows: list[dict], title: str = "Продажи") -> str
 
     categories = sorted(set(r["category_name"] for r in rows))
 
-    headers = ["Логин", "Пароль"]
+    headers = ["Логин:", "Пароль:"]
     header_fills = [header_fill, header_fill]
     for cat in categories:
         headers.append(cat)
         header_fills.append(_get_cat_header_fill(cat))
-    headers.append("Продано")
-    header_fills.append(header_fill)
-    headers.append("Выручка $")
+    headers.append("Сумма:")
     header_fills.append(header_fill)
 
     for col_idx, header in enumerate(headers, 1):
@@ -143,7 +167,7 @@ def generate_sales_excel(rows: list[dict], title: str = "Продажи") -> str
     for r in rows:
         phone = r["phone"]
         if phone not in accounts:
-            accounts[phone] = {"cats": {}, "total_sold": 0, "total_revenue": 0}
+            accounts[phone] = {"cats": {}, "total_revenue": 0}
             account_passwords[phone] = r.get("password", "")
         remaining = r["effective_max"] - r["used_signatures"]
         price = r.get("category_price", 0) or 0
@@ -156,12 +180,10 @@ def generate_sales_excel(rows: list[dict], title: str = "Продажи") -> str
             "sold": sold,
             "revenue": revenue,
         }
-        accounts[phone]["total_sold"] += sold
         accounts[phone]["total_revenue"] += revenue
 
     row_idx = 2
-    total_revenue_all = 0
-    total_sold_all = 0
+    grand_total = 0.0
     for phone in sorted(accounts.keys()):
         cell_phone = ws.cell(row=row_idx, column=1, value=phone)
         cell_phone.border = thin_border
@@ -173,9 +195,8 @@ def generate_sales_excel(rows: list[dict], title: str = "Продажи") -> str
 
         for cat_idx, cat in enumerate(categories):
             col = 3 + cat_idx
-            data = accounts[phone]["cats"].get(cat, {"remaining": 0, "max": 0, "price": 0, "sold": 0})
-            price_int = int(data["price"]) if data["price"] == int(data["price"]) else data["price"]
-            cell_val = f"{data['remaining']}-{data['max']}${price_int}"
+            data = accounts[phone]["cats"].get(cat, {"remaining": 0, "max": 0, "price": 0, "sold": 0, "revenue": 0})
+            cell_val = f"{data['remaining']}/{data['max']} - {_fmt_price(data['revenue'])}"
             cell = ws.cell(row=row_idx, column=col, value=cell_val)
             cell.border = thin_border
             cell.alignment = Alignment(horizontal="center")
@@ -186,48 +207,27 @@ def generate_sales_excel(rows: list[dict], title: str = "Продажи") -> str
             else:
                 cell.fill = red_fill
 
-        sold_col = 3 + len(categories)
-        rev_col = sold_col + 1
+        sum_col = 3 + len(categories)
+        row_revenue = round(accounts[phone]["total_revenue"], 2)
+        cell_sum = ws.cell(row=row_idx, column=sum_col, value=f"{_fmt_price(row_revenue)}")
+        cell_sum.border = thin_border
+        cell_sum.alignment = Alignment(horizontal="center")
+        cell_sum.font = Font(bold=True)
 
-        cell_sold = ws.cell(row=row_idx, column=sold_col, value=accounts[phone]["total_sold"])
-        cell_sold.border = thin_border
-        cell_sold.alignment = Alignment(horizontal="center")
-        cell_sold.font = Font(bold=True)
-
-        cell_rev = ws.cell(row=row_idx, column=rev_col, value=round(accounts[phone]["total_revenue"], 2))
-        cell_rev.border = thin_border
-        cell_rev.alignment = Alignment(horizontal="center")
-        cell_rev.font = Font(bold=True)
-        cell_rev.number_format = '#,##0.00'
-
-        total_sold_all += accounts[phone]["total_sold"]
-        total_revenue_all += accounts[phone]["total_revenue"]
+        grand_total += row_revenue
         row_idx += 1
 
     row_idx += 1
-    total_font = Font(bold=True, size=12)
-    sold_col = 3 + len(categories)
-    rev_col = sold_col + 1
-
-    cell_label = ws.cell(row=row_idx, column=sold_col - 1, value="ИТОГО:")
-    cell_label.font = total_font
-    cell_label.alignment = Alignment(horizontal="right")
-
-    cell_total_sold = ws.cell(row=row_idx, column=sold_col, value=total_sold_all)
-    cell_total_sold.font = total_font
-    cell_total_sold.border = thin_border
-    cell_total_sold.alignment = Alignment(horizontal="center")
-
-    cell_total_rev = ws.cell(row=row_idx, column=rev_col, value=round(total_revenue_all, 2))
-    cell_total_rev.font = total_font
-    cell_total_rev.number_format = '#,##0.00'
-    cell_total_rev.alignment = Alignment(horizontal="center")
-    cell_total_rev.border = thin_border
+    sum_col = 3 + len(categories)
+    cell_total = ws.cell(row=row_idx, column=sum_col, value=f"{_fmt_price(round(grand_total, 2))}")
+    cell_total.font = Font(bold=True, size=12)
+    cell_total.alignment = Alignment(horizontal="center")
+    cell_total.border = thin_border
 
     ws.column_dimensions["A"].width = 16
     ws.column_dimensions["B"].width = 16
     for col_idx in range(3, len(headers) + 1):
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 14
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 16
 
     fd, path = tempfile.mkstemp(suffix=".xlsx", prefix="sales_")
     os.close(fd)
