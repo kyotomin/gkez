@@ -537,14 +537,6 @@ async def try_reserve_account_exclusive(category_id: int, user_id: int) -> dict 
                        WHERE account_id = $3 AND category_id = $4""",
                     effective_max, user_id, account_id, category_id
                 )
-                await conn.execute(
-                    """UPDATE account_signatures 
-                       SET used_signatures = COALESCE(max_signatures, (SELECT max_signatures FROM categories WHERE id = account_signatures.category_id)),
-                           reserved_by = $1,
-                           reserved_until = NOW() + INTERVAL '3 days'
-                       WHERE account_id = $2 AND category_id != $3""",
-                    user_id, account_id, category_id
-                )
                 return {
                     "id": row["id"],
                     "phone": row["phone"],
