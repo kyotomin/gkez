@@ -297,15 +297,28 @@ def admin_order_detail_kb(order: dict, pending_docs: int = 0, doc_count: int = 0
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def admin_tickets_kb(tickets: list[dict]) -> InlineKeyboardMarkup:
+def admin_tickets_kb(tickets: list[dict], page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
+    total = len(tickets)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    start = page * per_page
+    page_tickets = tickets[start:start + per_page]
     buttons = []
-    for t in tickets:
+    for t in page_tickets:
         emoji = "🟢" if t["status"] == "open" else "🔴"
         user_name = t.get("username") or t.get("full_name") or "—"
         buttons.append([InlineKeyboardButton(
             text=f"{emoji} #{t['id']} — {user_name}: {t['subject'][:20]}",
             callback_data=f"admin_ticket_{t['id']}"
         )])
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_tickets_page_{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_tickets_page_{page + 1}"))
+        buttons.append(nav)
     buttons.append([InlineKeyboardButton(text="🔍 Поиск обращения", callback_data="admin_search_ticket")])
     buttons.append([InlineKeyboardButton(text="📝 Лимит обращений", callback_data="admin_ticket_limit")])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")])
@@ -385,15 +398,28 @@ def operator_send_doc_kb(order_id: int, sig_num: int, qty: int = 1) -> InlineKey
     ])
 
 
-def operator_tickets_kb(tickets: list[dict]) -> InlineKeyboardMarkup:
+def operator_tickets_kb(tickets: list[dict], page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
+    total = len(tickets)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    start = page * per_page
+    page_tickets = tickets[start:start + per_page]
     buttons = []
-    for t in tickets:
+    for t in page_tickets:
         emoji = "🟢" if t["status"] == "open" else "🔴"
         user_name = t.get("username") or t.get("full_name") or "—"
         buttons.append([InlineKeyboardButton(
             text=f"{emoji} #{t['id']} — {user_name}: {t['subject'][:20]}",
             callback_data=f"admin_ticket_{t['id']}"
         )])
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"op_tickets_page_{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="➡️", callback_data=f"op_tickets_page_{page + 1}"))
+        buttons.append(nav)
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

@@ -2653,29 +2653,46 @@ async def admin_view_all_docs(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_tickets")
 async def admin_tickets(callback: CallbackQuery):
+    await _show_tickets_page(callback, 0)
+
+
+@router.callback_query(F.data.startswith("admin_tickets_page_"))
+async def admin_tickets_page(callback: CallbackQuery):
+    page = int(callback.data.split("_")[-1])
+    await _show_tickets_page(callback, page)
+
+
+async def _show_tickets_page(callback: CallbackQuery, page: int):
     if not await AdminFilter.check_staff(callback.from_user.id):
         return
     tickets = await get_all_tickets()
     user_is_admin = await AdminFilter.check(callback.from_user.id)
     if not tickets:
         kb = admin_tickets_kb([]) if user_is_admin else operator_tickets_kb([])
+        try:
+            await callback.message.edit_text(
+                "🎫 <b>Тикеты</b>\n\n📭 Нет тикетов.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+        return
+    total = len(tickets)
+    kb = admin_tickets_kb(tickets, page=page) if user_is_admin else operator_tickets_kb(tickets, page=page)
+    try:
         await callback.message.edit_text(
-            "🎫 <b>Тикеты</b>\n\n📭 Нет тикетов.",
+            f"🎫 <b>Тикеты</b> ({total}):",
             reply_markup=kb,
             parse_mode="HTML",
         )
-        await callback.answer()
-        return
-    kb = admin_tickets_kb(tickets) if user_is_admin else operator_tickets_kb(tickets)
-    await callback.message.edit_text(
-        "🎫 <b>Тикеты:</b>",
-        reply_markup=kb,
-        parse_mode="HTML",
-    )
+    except TelegramBadRequest:
+        pass
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("admin_ticket_") & ~F.data.startswith("admin_ticket_reply_") & ~F.data.startswith("admin_ticket_limit"))
+@router.callback_query(F.data.startswith("admin_ticket_") & ~F.data.startswith("admin_ticket_reply_") & ~F.data.startswith("admin_ticket_limit") & ~F.data.startswith("admin_tickets_page_"))
 async def admin_ticket_detail(callback: CallbackQuery):
     if not await AdminFilter.check_staff(callback.from_user.id):
         return

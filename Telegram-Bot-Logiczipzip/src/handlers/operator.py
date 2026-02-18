@@ -310,8 +310,37 @@ async def cmd_tickets(message: Message):
             parse_mode="HTML",
         )
         return
+    total = len(tickets)
     await message.answer(
-        "🎫 <b>Тикеты:</b>",
-        reply_markup=operator_tickets_kb(tickets),
+        f"🎫 <b>Тикеты</b> ({total}):",
+        reply_markup=operator_tickets_kb(tickets, page=0),
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data.startswith("op_tickets_page_"))
+async def op_tickets_page(callback: CallbackQuery):
+    if not await is_staff(callback.from_user.id):
+        return
+    page = int(callback.data.split("_")[-1])
+    tickets = await get_all_tickets()
+    if not tickets:
+        try:
+            await callback.message.edit_text(
+                "🎫 <b>Тикеты</b>\n\n📭 Нет тикетов.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        await callback.answer()
+        return
+    total = len(tickets)
+    try:
+        await callback.message.edit_text(
+            f"🎫 <b>Тикеты</b> ({total}):",
+            reply_markup=operator_tickets_kb(tickets, page=page),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    await callback.answer()
