@@ -3,7 +3,7 @@ import json
 import logging
 
 from src.utils.cryptobot import check_invoice_paid
-from src.db.payments import get_payment_by_invoice, update_payment_status
+from src.db.payments import get_payment_by_invoice, update_payment_status, confirm_balance_payment
 from src.db.users import update_balance
 
 logger = logging.getLogger(__name__)
@@ -26,18 +26,26 @@ async def _poll_payment(invoice_id: int):
 
 async def _poll_payment_inner(invoice_id: int):
     try:
-        for _ in range(360):
+        for attempt in range(360):
             await asyncio.sleep(5)
             is_paid = await check_invoice_paid(invoice_id)
             if is_paid:
                 payment = await get_payment_by_invoice(invoice_id)
-                if payment and payment["status"] == "pending":
+                if not payment:
+                    logger.error(f"PAY_POLL: invoice={invoice_id} paid but payment record not found!")
+                    break
+                if payment["status"] != "pending":
+                    logger.info(f"PAY_POLL: invoice={invoice_id} already processed (status={payment['status']})")
+                    break
+                purpose = payment.get("purpose", "balance")
+                if purpose == "order":
                     await update_payment_status(invoice_id, "paid")
-                    purpose = payment.get("purpose", "balance")
-                    if purpose == "order":
-                        await _process_order_payment(payment)
-                    else:
-                        await update_balance(payment["user_id"], payment["amount"])
+                    logger.info(f"PAY_POLL: invoice={invoice_id} order payment confirmed, user={payment['user_id']}")
+                    await _process_order_payment(payment)
+                else:
+                    success = await confirm_balance_payment(invoice_id, payment["user_id"], payment["amount"])
+                    if success:
+                        logger.info(f"PAY_POLL: invoice={invoice_id} balance +{payment['amount']} for user={payment['user_id']} — SUCCESS")
                         try:
                             from src.bot.instance import bot
                             await bot.send_message(
@@ -47,13 +55,16 @@ async def _poll_payment_inner(invoice_id: int):
                                 f"Средства зачислены на ваш баланс.",
                                 parse_mode="HTML",
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"PAY_POLL: invoice={invoice_id} balance credited but notification failed: {e}")
+                    else:
+                        logger.warning(f"PAY_POLL: invoice={invoice_id} confirm_balance_payment returned False for user={payment['user_id']}")
                 break
         else:
             payment = await get_payment_by_invoice(invoice_id)
             if payment and payment["status"] == "pending":
                 await update_payment_status(invoice_id, "expired")
+                logger.info(f"PAY_POLL: invoice={invoice_id} expired after 30min, purpose={payment.get('purpose')}")
                 if payment.get("purpose") == "order":
                     try:
                         from src.bot.instance import bot
@@ -69,7 +80,7 @@ async def _poll_payment_inner(invoice_id: int):
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        logger.error(f"Payment check error for invoice {invoice_id}: {e}")
+        logger.error(f"Payment check error for invoice {invoice_id}: {e}", exc_info=True)
     finally:
         _active_checks.pop(invoice_id, None)
 

@@ -1,5 +1,9 @@
+import logging
+
 from aiocryptopay import AioCryptoPay, Networks
 from src.config import CRYPTO_BOT_TOKEN
+
+logger = logging.getLogger(__name__)
 
 _crypto: AioCryptoPay | None = None
 
@@ -29,7 +33,8 @@ async def create_invoice(amount: float, description: str = "", expires_in: int =
             "bot_invoice_url": invoice.bot_invoice_url,
             "status": invoice.status,
         }
-    except Exception:
+    except Exception as e:
+        logger.error(f"CRYPTO: create_invoice failed: {e}")
         return None
 
 
@@ -42,8 +47,8 @@ async def check_invoice_paid(invoice_id: int) -> bool:
         if invoices:
             inv = invoices[0] if isinstance(invoices, list) else invoices
             return inv.status == "paid"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"CRYPTO: check_invoice_paid({invoice_id}) error: {e}")
     return False
 
 
