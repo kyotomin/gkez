@@ -1782,10 +1782,12 @@ async def admin_confirm_check(callback: CallbackQuery):
         await callback.answer("❌ Заказ не активен", show_alert=True)
         return
     total = order.get("total_signatures") or 1
+    current_sent = order.get("signatures_sent", 0)
     buttons = []
     row = []
     for i in range(1, total + 1):
-        row.append(InlineKeyboardButton(text=str(i), callback_data=f"adm_chk_{order_id}_{i}"))
+        label = f"✅ {i}" if i <= current_sent else str(i)
+        row.append(InlineKeyboardButton(text=label, callback_data=f"adm_chk_{order_id}_{i}"))
         if len(row) == 5:
             buttons.append(row)
             row = []
@@ -1794,11 +1796,12 @@ async def admin_confirm_check(callback: CallbackQuery):
     buttons.append([InlineKeyboardButton(text="🔙 Отмена", callback_data=f"admin_order_{order_id}")])
     cat_name = order.get("category_name", "—")
     phone = order.get("phone", "—")
+    confirmed_text = f"\n✅ Уже подтверждено: {current_sent}/{total}" if current_sent > 0 else ""
     await callback.message.edit_text(
         f"✅ <b>Подтверждение заказа #{order_id}</b>\n\n"
         f"📂 Категория: {cat_name}\n"
-        f"📱 Телефон: <code>{phone}</code>\n\n"
-        f"Выберите количество подтверждённых подписей:",
+        f"📱 Телефон: <code>{phone}</code>{confirmed_text}\n\n"
+        f"Сколько подписей подтверждено всего:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         parse_mode="HTML",
     )
@@ -1826,38 +1829,47 @@ async def admin_confirm_check_qty(callback: CallbackQuery):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE orders SET signatures_claimed = $1, signatures_sent = $1 WHERE id = $2",
+            "UPDATE orders SET signatures_sent = $1 WHERE id = $2",
             confirmed_qty, order_id
         )
-    await update_order_status(order_id, "completed")
-    from src.db.accounts import release_account_reservation
-    account_id = order.get("account_id")
-    if account_id:
-        await release_account_reservation(account_id)
-    await callback.answer("✅ Заказ подтверждён", show_alert=True)
-    order = await get_order(order_id)
-    await callback.message.edit_text(
-        format_order_status(order),
-        reply_markup=await _admin_order_kb(order),
-        parse_mode="HTML",
-    )
-    try:
-        from src.bot.instance import get_bot
-        bot = get_bot()
-        if bot:
-            review_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⭐ Оставить отзыв", callback_data=f"leave_review_{order_id}")]
-            ])
-            await bot.send_message(
-                order["user_id"],
-                f"✅ <b>Заказ #{order_id} полностью подтверждён!</b>\n\n"
-                f"Все {confirmed_qty} подписей проверены.\n"
-                f"Спасибо за использование нашего сервиса.",
-                reply_markup=review_kb,
-                parse_mode="HTML",
-            )
-    except Exception:
-        pass
+    if confirmed_qty >= total:
+        await update_order_status(order_id, "completed")
+        from src.db.accounts import release_account_reservation
+        account_id = order.get("account_id")
+        if account_id:
+            await release_account_reservation(account_id)
+        await callback.answer("✅ Заказ полностью подтверждён!", show_alert=True)
+        order = await get_order(order_id)
+        await callback.message.edit_text(
+            format_order_status(order),
+            reply_markup=await _admin_order_kb(order),
+            parse_mode="HTML",
+        )
+        try:
+            from src.bot.instance import get_bot
+            bot = get_bot()
+            if bot:
+                review_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⭐ Оставить отзыв", callback_data=f"leave_review_{order_id}")]
+                ])
+                await bot.send_message(
+                    order["user_id"],
+                    f"✅ <b>Заказ #{order_id} полностью подтверждён!</b>\n\n"
+                    f"Все {confirmed_qty} подписей проверены.\n"
+                    f"Спасибо за использование нашего сервиса.",
+                    reply_markup=review_kb,
+                    parse_mode="HTML",
+                )
+        except Exception:
+            pass
+    else:
+        await callback.answer(f"✅ Подтверждено {confirmed_qty}/{total}", show_alert=True)
+        order = await get_order(order_id)
+        await callback.message.edit_text(
+            format_order_status(order),
+            reply_markup=await _admin_order_kb(order),
+            parse_mode="HTML",
+        )
 
 
 @router.callback_query(F.data.startswith("admin_early_complete_"))
