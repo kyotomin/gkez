@@ -210,15 +210,19 @@ async def _finalize_ticket(user, text: str, order_id, file_id: str = None, subje
         if order_id:
             notify_text += f"📦 По заказу: #{order_id}\n"
         notify_text += f"💬 {text[:200]}{file_mark}"
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        ticket_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Перейти к обращению", callback_data=f"admin_ticket_{ticket_id}")]
+        ])
         for admin_id in await get_admin_ids():
             try:
-                await bot.send_message(admin_id, notify_text, parse_mode="HTML")
+                await bot.send_message(admin_id, notify_text, parse_mode="HTML", reply_markup=ticket_kb)
             except Exception:
                 pass
         operator_ids = await get_ticket_operator_ids()
         for op_id in operator_ids:
             try:
-                await bot.send_message(op_id, notify_text, parse_mode="HTML")
+                await bot.send_message(op_id, notify_text, parse_mode="HTML", reply_markup=ticket_kb)
             except Exception:
                 pass
     except Exception:
