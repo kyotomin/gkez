@@ -12,7 +12,6 @@ from src.db.orders import create_order, create_preorder, get_order, increment_to
 from src.db.users import get_user, update_balance, is_user_blocked, get_user_deposit_required, get_user_totp_limit
 from src.db.settings import get_deposit_amount, has_user_deposit, is_bot_paused, is_admin_notifications_enabled, get_totp_limit, get_user_effective_deposit
 from src.db.operators import get_order_operator_ids, is_operator_notifications_enabled, get_order_operators_with_notifications
-from src.utils.totp import get_totp_remaining_seconds
 from src.utils.formatters import format_account_data, format_account_data_no_totp, format_order_card_admin
 from src.keyboards.user_kb import (
     buy_category_kb, account_actions_kb, go_to_orders_kb, confirm_buy_kb, main_menu_kb, order_detail_kb,
@@ -1483,17 +1482,7 @@ async def get_totp(callback: CallbackQuery, state: FSMContext):
             await callback.answer("❌ Лимит TOTP исчерпан.", show_alert=True)
         return
     await increment_totp_refresh(order_id)
-    remaining = get_totp_remaining_seconds()
     await callback.answer()
-    if remaining < 30:
-        try:
-            await callback.message.edit_text(
-                "⏳ <b>Получаем свежий TOTP...</b>",
-                parse_mode="HTML",
-            )
-        except TelegramBadRequest:
-            pass
-        await asyncio.sleep(remaining)
     order = await get_order(order_id)
     totp_used = order["totp_refreshes"]
     totp_lim = await _get_effective_totp_limit(callback.from_user.id, pending_qty, order_id)
@@ -1537,17 +1526,7 @@ async def refresh_totp(callback: CallbackQuery):
             await callback.answer("❌ Лимит обновлений TOTP исчерпан.", show_alert=True)
         return
     await increment_totp_refresh(order_id)
-    remaining = get_totp_remaining_seconds()
     await callback.answer()
-    if remaining < 30:
-        try:
-            await callback.message.edit_text(
-                "⏳ <b>Обновляем TOTP...</b>",
-                parse_mode="HTML",
-            )
-        except TelegramBadRequest:
-            pass
-        await asyncio.sleep(remaining)
     order = await get_order(order_id)
     totp_used = order["totp_refreshes"]
     totp_lim = await _get_effective_totp_limit(callback.from_user.id, pending_qty, order_id)

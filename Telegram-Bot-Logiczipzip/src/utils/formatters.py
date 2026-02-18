@@ -1,5 +1,5 @@
 from datetime import datetime
-from src.utils.totp import generate_totp
+from src.utils.totp import generate_totp, get_totp_remaining_seconds
 
 CATEGORY_EMOJI_MAP = {
     "МТС'Физ": "🔴",
@@ -90,6 +90,7 @@ def format_account_data_no_totp(order: dict, pending_qty: int = 0) -> str:
 
 def format_account_data(order: dict, totp_limit: int = 2, **kwargs) -> str:
     totp_code = generate_totp(order["totp_secret"])
+    remaining_sec = get_totp_remaining_seconds()
     claimed = order.get("signatures_claimed", 0)
     total = order.get("total_signatures", 1)
     totp_display = order.get("totp_refreshes", 0)
@@ -100,7 +101,7 @@ def format_account_data(order: dict, totp_limit: int = 2, **kwargs) -> str:
         f"📱 Аккаунт\n"
         f"├ Телефон: <code>{order['phone']}</code>\n"
         f"├ Пароль: <code>{order['password']}</code>\n"
-        f"├ TOTP: <code>{totp_code}</code>\n"
+        f"├ TOTP: <code>{totp_code}</code> (⏱ {remaining_sec}с)\n"
         f"└ Обновлений TOTP: {totp_display}/{totp_limit}\n\n"
         f"❗️ Эти данные конфиденциальны. Не передавайте их третьим лицам."
     )
@@ -192,6 +193,29 @@ def format_order_card_admin(order: dict, user_name: str) -> str:
         f"💰 Оплачено: {order.get('price_paid', 0):.2f}$\n"
         f"📌 Статус: {status}"
     )
+
+
+def format_batch_card_admin(orders: list[dict], user_name: str) -> str:
+    if not orders:
+        return ""
+    if len(orders) == 1:
+        return format_order_card_admin(orders[0], user_name)
+    total_sigs = sum(o.get("total_signatures", 1) for o in orders)
+    total_paid = sum(o.get("price_paid", 0) for o in orders)
+    cat_name = _category_display(orders[0])
+    lines = [
+        f"🛒 <b>Новые заказы ({len(orders)} шт.)</b>\n",
+        f"👤 Клиент: @{user_name}",
+        f"📂 Категория: {cat_name}",
+        f"📊 Всего подписей: {total_sigs}",
+        f"💰 Сумма: {total_paid:.2f}$\n",
+        "📋 <b>Заказы:</b>\n",
+    ]
+    for o in orders:
+        sigs = o.get("total_signatures", 1)
+        phone = o.get("phone", "—")
+        lines.append(f"📦 #{o['id']} — {sigs} подп. — <code>{phone}</code>")
+    return "\n".join(lines)
 
 
 def format_batch_group_status(orders: list[dict]) -> str:

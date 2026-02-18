@@ -247,21 +247,21 @@ async def _process_order_payment(payment: dict):
                     except Exception:
                         pass
             else:
-                for order in all_orders:
-                    notify_text = format_order_card_admin(order, user_name)
-                    for admin_id in await get_admin_ids():
-                        notify_enabled = await is_admin_notifications_enabled(admin_id)
-                        if notify_enabled:
-                            try:
-                                await bot.send_message(admin_id, notify_text, parse_mode="HTML")
-                            except Exception:
-                                pass
-                    op_ids = await get_order_operator_ids()
-                    for op_id in op_ids:
+                from src.utils.formatters import format_batch_card_admin
+                notify_text = format_batch_card_admin(all_orders, user_name)
+                for admin_id in await get_admin_ids():
+                    notify_enabled = await is_admin_notifications_enabled(admin_id)
+                    if notify_enabled:
                         try:
-                            await bot.send_message(op_id, notify_text, parse_mode="HTML")
+                            await bot.send_message(admin_id, notify_text, parse_mode="HTML")
                         except Exception:
                             pass
+                op_ids = await get_order_operator_ids()
+                for op_id in op_ids:
+                    try:
+                        await bot.send_message(op_id, notify_text, parse_mode="HTML")
+                    except Exception:
+                        pass
         except Exception:
             pass
 
