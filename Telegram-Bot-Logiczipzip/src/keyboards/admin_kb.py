@@ -40,6 +40,7 @@ def admin_menu_kb(bot_paused: bool = False, show_admin_mgmt: bool = False) -> In
         ],
         [
             InlineKeyboardButton(text="📢 Подписки", callback_data="admin_channels"),
+            InlineKeyboardButton(text="👥 Рефералы", callback_data="admin_referral"),
         ],
     ]
     if show_admin_mgmt:

@@ -226,6 +226,24 @@ async def _process_order_payment(payment: dict):
     if orders_created:
         all_orders = [o for o, _ in orders_created]
 
+    for o in all_orders:
+        try:
+            from src.db.referrals import process_referral_reward
+            result = await process_referral_reward(user_id, o['id'], o.get('price_paid', 0))
+            if result:
+                try:
+                    await bot.send_message(
+                        result['referrer_id'],
+                        f"💰 <b>Реферальный бонус!</b>\n\n"
+                        f"Ваш реферал совершил покупку.\n"
+                        f"Начислено: <b>+{result['reward']:.2f}$</b>",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     if all_orders:
         try:
             user_obj = await bot.get_chat(user_id)

@@ -372,6 +372,7 @@ def profile_kb(has_deposit: bool = False, deposit_required: bool = True) -> Inli
             buttons.append([InlineKeyboardButton(text="🔒 Пополнить депозит", callback_data="pay_deposit")])
         else:
             buttons.append([InlineKeyboardButton(text="💸 Вывести депозит", callback_data="withdraw_deposit")])
+    buttons.append([InlineKeyboardButton(text="👥 Рефералы", callback_data="my_referrals")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

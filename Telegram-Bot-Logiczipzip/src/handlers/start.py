@@ -51,11 +51,24 @@ async def send_subscription_required(message_or_callback, not_subscribed: list[d
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+
+    args = message.text.split(maxsplit=1)
+    referral_arg = args[1] if len(args) > 1 else None
+
     await get_or_create_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
         full_name=message.from_user.full_name,
     )
+
+    if referral_arg and referral_arg.startswith("ref_"):
+        try:
+            referrer_id = int(referral_arg[4:])
+            from src.db.referrals import set_referrer
+            await set_referrer(message.from_user.id, referrer_id)
+        except (ValueError, Exception):
+            pass
+
     blocked = await is_user_blocked(message.from_user.id)
     if blocked:
         await message.answer(

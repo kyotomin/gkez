@@ -259,6 +259,34 @@ async def init_db():
             await conn.execute("ALTER TABLE orders ADD COLUMN batch_group_id TEXT DEFAULT NULL")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_batch_group ON orders(batch_group_id) WHERE batch_group_id IS NOT NULL")
 
+        col_referred = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by'"
+        )
+        if not col_referred:
+            await conn.execute("ALTER TABLE users ADD COLUMN referred_by BIGINT DEFAULT NULL")
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS referral_earnings (
+                id SERIAL PRIMARY KEY,
+                referrer_id BIGINT NOT NULL,
+                referral_id BIGINT NOT NULL,
+                order_id INTEGER NOT NULL,
+                amount DOUBLE PRECISION NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_referral_earnings_referrer ON referral_earnings(referrer_id);
+            CREATE INDEX IF NOT EXISTS idx_referral_earnings_referral ON referral_earnings(referral_id);
+            CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_referral_earnings_order ON referral_earnings(order_id);
+        """)
+
+        await conn.execute(
+            "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+            "referral_percent", "5"
+        )
+
         await conn.execute(
             "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
             "deposit_amount", "30"

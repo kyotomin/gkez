@@ -23,6 +23,23 @@ router = Router()
 
 
 
+async def _notify_referral(user_id: int, order_id: int, amount: float):
+    from src.db.referrals import process_referral_reward
+    result = await process_referral_reward(user_id, order_id, amount)
+    if result:
+        try:
+            from src.bot.instance import bot
+            await bot.send_message(
+                result['referrer_id'],
+                f"💰 <b>Реферальный бонус!</b>\n\n"
+                f"Ваш реферал совершил покупку.\n"
+                f"Начислено: <b>+{result['reward']:.2f}$</b>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+
 async def get_target_operator_ids(account_id: int | None) -> list[int]:
     if account_id:
         assigned_op = await get_account_operator(account_id)
@@ -621,6 +638,9 @@ async def confirm_custom_buy(callback: CallbackQuery, state: FSMContext):
         o = await get_order(oid)
         orders_created.append((o, alloc))
 
+    for order, alloc in orders_created:
+        await _notify_referral(callback.from_user.id, order['id'], price * alloc['batch_size'])
+
     await state.clear()
 
     if len(orders_created) == 1:
@@ -1014,6 +1034,8 @@ async def confirm_bb(callback: CallbackQuery):
         if created_count == 0:
             await callback.answer("❌ Ошибка при создании заказов. Средства возвращены.", show_alert=True)
             return
+    for oid in order_ids:
+        await _notify_referral(callback.from_user.id, oid, bb_price)
     lines = []
     if order_ids:
         ids_str = ", ".join(f"#{oid}" for oid in order_ids)
@@ -1132,6 +1154,9 @@ async def confirm_buy(callback: CallbackQuery, state: FSMContext):
         oid = await create_order(callback.from_user.id, alloc["id"], category_id, alloc_price, alloc_qty, batch_group_id=bg_id)
         o = await get_order(oid)
         orders_created.append((o, alloc))
+
+    for order, alloc in orders_created:
+        await _notify_referral(callback.from_user.id, order['id'], price * alloc['batch_size'])
 
     await state.clear()
 

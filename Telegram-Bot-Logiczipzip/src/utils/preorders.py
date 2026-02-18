@@ -61,12 +61,38 @@ async def _notify_fulfillment(bot, po, accounts_info: list[dict], order_ids: lis
         pass
 
 
+async def _process_preorder_referral(bot, po, order_ids: list[int]):
+    try:
+        from src.db.referrals import process_referral_reward
+        price_paid = po.get("price_paid", 0)
+        if len(order_ids) > 1:
+            per_order = price_paid / len(order_ids) if order_ids else price_paid
+        else:
+            per_order = price_paid
+        for oid in order_ids:
+            result = await process_referral_reward(po["user_id"], oid, per_order)
+            if result:
+                try:
+                    await bot.send_message(
+                        result['referrer_id'],
+                        f"💰 <b>Реферальный бонус!</b>\n\n"
+                        f"Ваш реферал совершил покупку.\n"
+                        f"Начислено: <b>+{result['reward']:.2f}$</b>",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 async def _fulfill_exclusive(bot, po) -> bool:
     account = await try_reserve_account_exclusive(po["category_id"], po["user_id"])
     if not account:
         return False
     await fulfill_preorder(po["id"], account["id"])
     await _notify_fulfillment(bot, po, [account], [po["id"]])
+    await _process_preorder_referral(bot, po, [po["id"]])
     return True
 
 
@@ -79,9 +105,11 @@ async def _fulfill_regular(bot, po) -> bool:
     if len(allocations) == 1:
         await fulfill_preorder(po["id"], allocations[0]["id"])
         await _notify_fulfillment(bot, po, allocations, [po["id"]])
+        await _process_preorder_referral(bot, po, [po["id"]])
     else:
         order_ids = await fulfill_preorder_multi(po, allocations)
         await _notify_fulfillment(bot, po, allocations, order_ids)
+        await _process_preorder_referral(bot, po, order_ids)
 
     return True
 

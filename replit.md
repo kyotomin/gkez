@@ -65,6 +65,8 @@ Telegram-Bot-Logiczipzip/
       excel_export.py        # Excel report generation with styled headers
       formatters.py          # Text formatting helpers for profile, orders, accounts
       preorders.py           # Preorder fulfillment logic (runs as background task)
+    db/
+      referrals.py           # Referral system: set_referrer, get_referral_stats, process_referral_reward
 ```
 
 ### Key Design Patterns
@@ -90,7 +92,7 @@ Telegram-Bot-Logiczipzip/
 
 ### Database Schema (PostgreSQL)
 Key tables (created in `database.py`):
-- `users` — telegram_id, username, balance, is_blocked
+- `users` — telegram_id, username, balance, is_blocked, referred_by
 - `admins` — telegram_id, role (owner/admin)
 - `operators` — telegram_id, username, role
 - `categories` — name, price, max_signatures, is_active
@@ -107,6 +109,7 @@ Key tables (created in `database.py`):
 - `reputation_links` — name, url, sort_order
 - `order_documents` — order_id, file_id, sender_type
 - `doc_requests` — order_id, status
+- `referral_earnings` — referrer_id, referral_id, order_id, amount (unique on order_id for idempotency)
 
 ### Configuration
 All config is via environment variables:

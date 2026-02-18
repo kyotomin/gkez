@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from src.db.users import get_user_profile_data, get_user_order_count
@@ -125,6 +125,51 @@ async def topup_fixed_amount(callback: CallbackQuery):
     amount = float(callback.data.split("_")[1])
     await callback.answer()
     await _create_and_send_invoice(callback.message, amount, edit=True, user_id=callback.from_user.id)
+
+
+@router.callback_query(F.data == "my_referrals")
+async def show_referrals(callback: CallbackQuery):
+    from src.db.referrals import get_referral_stats, get_referral_percent
+    from src.bot.instance import bot
+    stats = await get_referral_stats(callback.from_user.id)
+    percent = await get_referral_percent()
+    bot_info = await bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start=ref_{callback.from_user.id}"
+
+    text = (
+        f"👥 <b>Реферальная программа</b>\n\n"
+        f"📎 Ваша ссылка:\n<code>{ref_link}</code>\n\n"
+        f"💡 Делитесь ссылкой с друзьями!\n"
+        f"Вы получаете <b>{percent:.0f}%</b> с каждой покупки вашего реферала.\n\n"
+        f"👤 Приглашено: <b>{stats['referral_count']}</b>\n"
+        f"💰 Заработано: <b>{stats['total_earned']:.2f}$</b>"
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_profile")],
+    ])
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_profile")
+async def back_to_profile(callback: CallbackQuery):
+    data = await get_user_profile_data(
+        telegram_id=callback.from_user.id,
+        username=callback.from_user.username,
+        full_name=callback.from_user.full_name,
+    )
+    if not data:
+        await callback.answer()
+        return
+    dep_required = (data["effective_deposit"] or 0) > 0
+    actual_dep = data["has_deposit"]
+    await callback.message.edit_text(
+        format_profile(data, data["order_count"], actual_dep, dep_required),
+        parse_mode="HTML",
+        reply_markup=profile_kb(actual_dep, dep_required),
+    )
+    await callback.answer()
 
 
 async def _create_and_send_invoice(message, amount: float, edit: bool = False, user_id: int = None):

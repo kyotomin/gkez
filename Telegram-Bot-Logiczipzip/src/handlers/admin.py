@@ -13,7 +13,7 @@ from src.states.admin_states import (
     AdminBalanceStates, AdminDepositStates, AdminOperatorStates,
     AdminUserStates, AdminBroadcastStates, AdminPreorderStates,
     AdminPauseStates, AdminReputationStates, AdminFaqStates,
-    AdminTicketLimitStates, AdminReviewBonusStates, AdminStatsStates,
+    AdminTicketLimitStates, AdminReviewBonusStates, AdminStatsStates, AdminReferralStates,
     AdminWithdrawDepositStates, AdminMassDeleteStates, AdminBulkAssignStates,
     AdminChannelStates, AdminAdminStates, AdminOrderTotpStates,
     AdminEnableAccountsStates, AdminMassEnableStates, AdminMassDisableStates,
@@ -5434,6 +5434,59 @@ async def process_review_bonus(message: Message, state: FSMContext):
     await message.answer(
         f"✅ Бонус за отзыв установлен: <b>{val:.2f}$</b>",
         reply_markup=admin_reviews_kb(reviews),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "admin_referral")
+async def admin_referral(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    from src.db.referrals import get_referral_percent
+    current = await get_referral_percent()
+    await callback.message.edit_text(
+        f"👥 <b>Реферальная система</b>\n\n"
+        f"Текущий процент: <b>{current:.1f}%</b>\n\n"
+        f"Пользователи получают этот процент от каждой покупки приглашённого друга.\n"
+        f"Установите 0, чтобы отключить.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Изменить процент", callback_data="admin_set_referral_percent")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")],
+        ]),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_set_referral_percent")
+async def admin_set_referral_percent(callback: CallbackQuery, state: FSMContext):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    await callback.message.edit_text(
+        "📊 Введите процент реферального вознаграждения (0-100):",
+        parse_mode="HTML",
+    )
+    await state.set_state(AdminReferralStates.waiting_percent)
+    await callback.answer()
+
+
+@router.message(AdminReferralStates.waiting_percent)
+async def process_referral_percent(message: Message, state: FSMContext):
+    if not await AdminFilter.check(message.from_user.id):
+        return
+    try:
+        val = float(message.text.strip().replace(",", "."))
+        if val < 0 or val > 100:
+            raise ValueError
+    except (ValueError, AttributeError):
+        await message.answer("❌ Введите число от 0 до 100.")
+        return
+    from src.db.referrals import set_referral_percent
+    await set_referral_percent(val)
+    await state.clear()
+    status = f"{val:.1f}%" if val > 0 else "отключена"
+    await message.answer(
+        f"✅ Реферальная система: {status}",
         parse_mode="HTML",
     )
 

@@ -140,3 +140,7 @@ class AdminOrderScreenshotStates(StatesGroup):
 
 class AdminReduceSignaturesStates(StatesGroup):
     waiting_count = State()
+
+
+class AdminReferralStates(StatesGroup):
+    waiting_percent = State()
