@@ -1,8 +1,12 @@
+import logging
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
+
+logger = logging.getLogger(__name__)
 
 from src.db.admins import get_admin_ids, add_admin, remove_admin, is_admin, is_owner, get_all_admins, get_admin_stats
 from datetime import datetime, timedelta
@@ -3130,8 +3134,12 @@ async def admin_export_all(callback: CallbackQuery):
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename="Наличие аккаунтов.xlsx")
         await callback.message.answer_document(doc, caption="📥 Выгрузка наличия (все аккаунты)")
-    except Exception:
-        await callback.message.answer("❌ Ошибка при формировании файла.")
+    except Exception as e:
+        logger.error(f"EXPORT_ALL: ошибка генерации/отправки файла: {e}", exc_info=True)
+        try:
+            await callback.message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
     finally:
         if path and os.path.exists(path):
             os.remove(path)
@@ -3181,8 +3189,12 @@ async def admin_export_date_process(message: Message, state: FSMContext):
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=f"Наличие аккаунтов {date_str}.xlsx")
         await message.answer_document(doc, caption=f"📥 Выгрузка наличия за {date_str}")
-    except Exception:
-        await message.answer("❌ Ошибка при формировании файла.")
+    except Exception as e:
+        logger.error(f"EXPORT_DATE: ошибка генерации/отправки файла за {date_str}: {e}", exc_info=True)
+        try:
+            await message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
     finally:
         if path and os.path.exists(path):
             os.remove(path)
@@ -3195,21 +3207,25 @@ async def admin_export_today(callback: CallbackQuery):
     from datetime import datetime as _dt, timezone, timedelta
     msk = timezone(timedelta(hours=3))
     today = str(_dt.now(msk).date())
-    rows = await get_accounts_availability_by_date(today)
-    if not rows:
-        await callback.answer("❌ Нет данных за сегодня", show_alert=True)
-        return
-    await callback.answer("⏳ Формируется файл...")
     import os
     from src.utils.excel_export import generate_availability_excel
     path = None
     try:
+        rows = await get_accounts_availability_by_date(today)
+        if not rows:
+            await callback.answer("❌ Нет данных за сегодня", show_alert=True)
+            return
+        await callback.answer("⏳ Формируется файл...")
         path = generate_availability_excel(rows, title=f"Наличие {today}")
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=f"Наличие аккаунтов {today}.xlsx")
         await callback.message.answer_document(doc, caption=f"📥 Выгрузка наличия за сегодня ({today})")
-    except Exception:
-        await callback.message.answer("❌ Ошибка при формировании файла.")
+    except Exception as e:
+        logger.error(f"EXPORT_TODAY: ошибка генерации/отправки файла за {today}: {e}", exc_info=True)
+        try:
+            await callback.message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
     finally:
         if path and os.path.exists(path):
             os.remove(path)
@@ -3269,8 +3285,12 @@ async def admin_export_phones_process(message: Message, state: FSMContext):
             doc,
             caption=f"📥 Выгрузка наличия по номерам\n📱 Найдено: {found_phones} из {total_input} номеров",
         )
-    except Exception:
-        await message.answer("❌ Ошибка при формировании файла.")
+    except Exception as e:
+        logger.error(f"EXPORT_PHONES: ошибка генерации/отправки файла: {e}", exc_info=True)
+        try:
+            await message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
     finally:
         if path and os.path.exists(path):
             os.remove(path)
@@ -3348,8 +3368,12 @@ async def process_custom_period(message: Message, state: FSMContext):
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=fname)
         await message.answer_document(doc, caption=f"📥 {title}")
-    except Exception:
-        await message.answer("❌ Ошибка при формировании файла.")
+    except Exception as e:
+        logger.error(f"SALES_CUSTOM: ошибка генерации/отправки файла: {e}", exc_info=True)
+        try:
+            await message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
     finally:
         if path and os.path.exists(path):
             os.remove(path)
@@ -3402,8 +3426,12 @@ async def admin_sales_period(callback: CallbackQuery):
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=fname)
         await callback.message.answer_document(doc, caption=f"📥 {title}")
-    except Exception:
-        await callback.message.answer("❌ Ошибка при формировании файла.")
+    except Exception as e:
+        logger.error(f"SALES_PERIOD: ошибка генерации/отправки файла ({title}): {e}", exc_info=True)
+        try:
+            await callback.message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
     finally:
         if path and os.path.exists(path):
             os.remove(path)
