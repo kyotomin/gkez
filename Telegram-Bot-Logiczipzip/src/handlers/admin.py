@@ -3592,7 +3592,7 @@ async def process_add_operator(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data.startswith("admin_op_") & ~F.data.startswith("admin_op_role_") & ~F.data.startswith("admin_op_toggle_notif_"))
+@router.callback_query(F.data.startswith("admin_op_") & ~F.data.startswith("admin_op_role_") & ~F.data.startswith("admin_op_toggle_notif_") & ~F.data.startswith("admin_op_stat") & ~F.data.startswith("admin_op_accs") & ~F.data.startswith("admin_op_avail_") & ~F.data.startswith("admin_op_sales_"))
 async def admin_operator_detail(callback: CallbackQuery):
     if not await AdminFilter.check(callback.from_user.id):
         return
@@ -6118,24 +6118,18 @@ async def admin_op_stat_export(callback: CallbackQuery):
         period_label = "за всё время"
     await callback.answer("⏳ Формируется файл...")
     rows = await get_sales_by_operator(op_id, date_from, date_to)
-    if not rows:
-        try:
-            await callback.message.answer("📊 Нет данных о продажах за выбранный период.")
-        except Exception:
-            pass
-        return
-    import os
-    from src.utils.excel_export import generate_sales_excel
+    summary = await get_operator_summary_stats(op_id, date_from, date_to)
     op = await get_operator(op_id)
     name = f"@{op['username']}" if op and op.get("username") else str(op_id)
-    title = f"Продажи {name} {period_label}"
-    fname = f"Продажи {name} {period_label}.xlsx"
+    import os
+    from src.utils.pdf_export import generate_operator_stats_pdf
+    fname = f"Статистика {name} {period_label}.pdf"
     path = None
     try:
-        path = generate_sales_excel(rows, title=title)
+        path = generate_operator_stats_pdf(name, period_label, summary, rows)
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=fname)
-        await callback.message.answer_document(doc, caption=f"📥 {title}")
+        await callback.message.answer_document(doc, caption=f"📥 Статистика {name} {period_label}")
     except Exception as e:
         logger.error(f"OP_STAT_EXPORT: ошибка: {e}", exc_info=True)
         try:
@@ -6248,17 +6242,16 @@ async def admin_op_availability_export(callback: CallbackQuery):
             pass
         return
     import os
-    from src.utils.excel_export import generate_availability_excel
+    from src.utils.pdf_export import generate_operator_availability_pdf
     op = await get_operator(op_id)
     name = f"@{op['username']}" if op and op.get("username") else str(op_id)
-    title = f"Наличие {name}"
-    fname = f"Наличие {name}.xlsx"
+    fname = f"Наличие {name}.pdf"
     path = None
     try:
-        path = generate_availability_excel(rows, title=title)
+        path = generate_operator_availability_pdf(name, rows)
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=fname)
-        await callback.message.answer_document(doc, caption=f"📥 {title}")
+        await callback.message.answer_document(doc, caption=f"📥 Наличие {name}")
     except Exception as e:
         logger.error(f"OP_AVAIL_EXPORT: ошибка: {e}", exc_info=True)
         try:
@@ -6279,24 +6272,18 @@ async def admin_op_sales_export(callback: CallbackQuery):
     op_id = int(m.group(1))
     await callback.answer("⏳ Формируется файл...")
     rows = await get_sales_by_operator(op_id)
-    if not rows:
-        try:
-            await callback.message.answer("📊 Нет данных о продажах.")
-        except Exception:
-            pass
-        return
-    import os
-    from src.utils.excel_export import generate_sales_excel
+    summary = await get_operator_summary_stats(op_id)
     op = await get_operator(op_id)
     name = f"@{op['username']}" if op and op.get("username") else str(op_id)
-    title = f"Продажи {name}"
-    fname = f"Продажи {name}.xlsx"
+    import os
+    from src.utils.pdf_export import generate_operator_stats_pdf
+    fname = f"Продажи {name}.pdf"
     path = None
     try:
-        path = generate_sales_excel(rows, title=title)
+        path = generate_operator_stats_pdf(name, "за всё время", summary, rows)
         from aiogram.types import FSInputFile
         doc = FSInputFile(path, filename=fname)
-        await callback.message.answer_document(doc, caption=f"📥 {title}")
+        await callback.message.answer_document(doc, caption=f"📥 Продажи {name}")
     except Exception as e:
         logger.error(f"OP_SALES_EXPORT: ошибка: {e}", exc_info=True)
         try:

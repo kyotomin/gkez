@@ -59,12 +59,15 @@ async def get_all_admins() -> list[dict]:
 
 
 async def get_admin_stats(admin_telegram_id: int, date_from: str = None, date_to: str = None) -> dict:
+    from datetime import date as _date
     pool = await get_pool()
     async with pool.acquire() as conn:
-        if date_from and date_to:
+        df = _date.fromisoformat(date_from) if date_from else None
+        dt = _date.fromisoformat(date_to) if date_to else None
+        if df and dt:
             accounts_added = await conn.fetchval(
-                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date BETWEEN $2::date AND $3::date",
-                admin_telegram_id, date_from, date_to
+                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date BETWEEN $2 AND $3",
+                admin_telegram_id, df, dt
             )
             row = await conn.fetchrow(
                 """SELECT COUNT(*) as cnt, COALESCE(SUM(o.total_signatures), 0) as sigs,
@@ -72,13 +75,13 @@ async def get_admin_stats(admin_telegram_id: int, date_from: str = None, date_to
                     FROM orders o
                     JOIN accounts a ON o.account_id = a.id
                     WHERE a.added_by_admin_id = $1 AND o.status IN ('active', 'completed')
-                    AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date BETWEEN $2::date AND $3::date""",
-                admin_telegram_id, date_from, date_to
+                    AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date BETWEEN $2 AND $3""",
+                admin_telegram_id, df, dt
             )
-        elif date_from:
+        elif df:
             accounts_added = await conn.fetchval(
-                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $2::date",
-                admin_telegram_id, date_from
+                "SELECT COUNT(*) FROM accounts a WHERE a.added_by_admin_id = $1 AND (a.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $2",
+                admin_telegram_id, df
             )
             row = await conn.fetchrow(
                 """SELECT COUNT(*) as cnt, COALESCE(SUM(o.total_signatures), 0) as sigs,
@@ -86,8 +89,8 @@ async def get_admin_stats(admin_telegram_id: int, date_from: str = None, date_to
                     FROM orders o
                     JOIN accounts a ON o.account_id = a.id
                     WHERE a.added_by_admin_id = $1 AND o.status IN ('active', 'completed')
-                    AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $2::date""",
-                admin_telegram_id, date_from
+                    AND (o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date = $2""",
+                admin_telegram_id, df
             )
         else:
             accounts_added = await conn.fetchval(
