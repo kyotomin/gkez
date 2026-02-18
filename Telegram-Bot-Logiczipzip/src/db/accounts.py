@@ -511,10 +511,16 @@ async def try_reserve_account_exclusive(category_id: int, user_id: int) -> dict 
                          AND COALESCE(a.is_enabled, 1) = 1
                          AND s.used_signatures = 0
                          AND (s.reserved_by IS NULL OR s.reserved_until <= NOW())
+                         AND NOT EXISTS (
+                             SELECT 1 FROM orders o
+                             WHERE o.account_id = a.id
+                               AND o.category_id = $3
+                               AND o.status IN ('active', 'pending_review')
+                         )
                        ORDER BY prio DESC, a.created_at ASC
                        LIMIT 1
                        FOR UPDATE OF s""",
-                    category_id, category_id
+                    category_id, category_id, category_id
                 )
                 if not row:
                     return None
@@ -537,6 +543,7 @@ async def try_reserve_account_exclusive(category_id: int, user_id: int) -> dict 
                        WHERE account_id = $3 AND category_id = $4""",
                     effective_max, user_id, account_id, category_id
                 )
+                logger.info(f"BB_RESERVE: account={account_id}, phone={row['phone']}, cat={category_id}, user={user_id}, used_set={effective_max}")
                 return {
                     "id": row["id"],
                     "phone": row["phone"],
