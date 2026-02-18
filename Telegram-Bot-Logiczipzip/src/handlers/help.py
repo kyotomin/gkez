@@ -212,7 +212,10 @@ async def _finalize_ticket(user, text: str, order_id, file_id: str = None, subje
         notify_text += f"💬 {text[:200]}{file_mark}"
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         ticket_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Перейти к обращению", callback_data=f"admin_ticket_{ticket_id}")]
+            [
+                InlineKeyboardButton(text="📋 Обращение", callback_data=f"admin_ticket_{ticket_id}"),
+                InlineKeyboardButton(text="👤 Профиль", callback_data=f"admin_user_{user.id}"),
+            ]
         ])
         for admin_id in await get_admin_ids():
             try:

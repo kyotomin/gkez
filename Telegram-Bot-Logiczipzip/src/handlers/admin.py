@@ -1414,7 +1414,7 @@ async def _send_user_profile(target, user: dict, edit: bool = False):
 
 @router.callback_query(F.data.regexp(r"^admin_user_\d+$"))
 async def admin_user_detail(callback: CallbackQuery):
-    if not await AdminFilter.check(callback.from_user.id):
+    if not await AdminFilter.check_staff(callback.from_user.id):
         return
     telegram_id = int(callback.data.split("admin_user_")[1])
     user = await get_user(telegram_id)
