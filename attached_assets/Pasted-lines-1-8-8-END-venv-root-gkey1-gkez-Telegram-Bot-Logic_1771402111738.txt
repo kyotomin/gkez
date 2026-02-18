@@ -1,0 +1,32 @@
+lines 1-8/8 (END)
+(venv) root@gkey1:~/gkez/Telegram-Bot-Logiczipzip# journalctl -u simbot -n 30 --no-pager
+Feb 18 09:07:50 gkey1.aeza.network systemd[1]: simbot.service: Scheduled restart job, restart counter is at 4.
+Feb 18 09:07:50 gkey1.aeza.network systemd[1]: Started simbot.service - SIM Sign Telegram Bot.
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]: Traceback (most recent call last):
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/root/gkez/Telegram-Bot-Logiczipzip/main.py", line 94, in <module>
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     asyncio.run(main())
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     return runner.run(main)
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:            ^^^^^^^^^^^^^^^^
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     return self._loop.run_until_complete(task)
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     return future.result()
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:            ^^^^^^^^^^^^^^^
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/root/gkez/Telegram-Bot-Logiczipzip/main.py", line 66, in main
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     bot = create_bot()
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:           ^^^^^^^^^^^^
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/root/gkez/Telegram-Bot-Logiczipzip/src/bot/instance.py", line 9, in create_bot
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     bot = Bot(token=BOT_TOKEN)
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:           ^^^^^^^^^^^^^^^^^^^^
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/root/gkez/Telegram-Bot-Logiczipzip/venv/lib/python3.12/site-packages/aiogram/client/bot.py", line 277, in __init__
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     validate_token(token)
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:   File "/root/gkez/Telegram-Bot-Logiczipzip/venv/lib/python3.12/site-packages/aiogram/utils/token.py", line 22, in validate_token
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]:     raise TokenValidationError(message)
+Feb 18 09:07:52 gkey1.aeza.network python3[5515]: aiogram.utils.token.TokenValidationError: Token is invalid! It can't contains spaces.
+Feb 18 09:07:53 gkey1.aeza.network systemd[1]: simbot.service: Main process exited, code=exited, status=1/FAILURE
+Feb 18 09:07:53 gkey1.aeza.network systemd[1]: simbot.service: Failed with result 'exit-code'.
+Feb 18 09:07:53 gkey1.aeza.network systemd[1]: simbot.service: Consumed 2.774s CPU time.
+Feb 18 09:08:03 gkey1.aeza.network systemd[1]: simbot.service: Scheduled restart job, restart counter is at 5.
+Feb 18 09:08:03 gkey1.aeza.network systemd[1]: Started simbot.service - SIM Sign Telegram Bot.
