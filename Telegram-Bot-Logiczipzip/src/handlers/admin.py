@@ -5910,6 +5910,7 @@ async def admin_stat_view(callback: CallbackQuery):
         f"   💰 Выручка: ${stats_all['revenue']:.2f}"
     )
     buttons = [
+        [InlineKeyboardButton(text="📥 Выгрузка PDF", callback_data=f"admin_stat_pdf_{target_id}")],
         [InlineKeyboardButton(text="📅 За конкретную дату", callback_data=f"admin_stat_date_{target_id}")],
         [InlineKeyboardButton(text="🔙 К списку админов", callback_data="admin_stats_admins")],
     ]
@@ -5919,6 +5920,43 @@ async def admin_stat_view(callback: CallbackQuery):
         parse_mode="HTML",
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_stat_pdf_"))
+async def admin_stat_pdf_export(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    target_id = int(callback.data.split("admin_stat_pdf_")[1])
+    await callback.answer("⏳ Формируется PDF...")
+    from datetime import timezone as _tz
+    msk = _tz(timedelta(hours=3))
+    today_str = str(datetime.now(msk).date())
+    week_ago = str(datetime.now(msk).date() - timedelta(days=7))
+    month_ago = str(datetime.now(msk).date() - timedelta(days=30))
+    stats_today, stats_week, stats_month, stats_all = await asyncio.gather(
+        get_admin_stats(target_id, date_from=today_str),
+        get_admin_stats(target_id, date_from=week_ago, date_to=today_str),
+        get_admin_stats(target_id, date_from=month_ago, date_to=today_str),
+        get_admin_stats(target_id),
+    )
+    import os
+    from src.utils.pdf_export import generate_admin_stats_pdf
+    fname = f"Статистика админа {target_id}.pdf"
+    path = None
+    try:
+        path = generate_admin_stats_pdf(target_id, stats_today, stats_week, stats_month, stats_all)
+        from aiogram.types import FSInputFile
+        doc = FSInputFile(path, filename=fname)
+        await callback.message.answer_document(doc, caption=f"📥 Статистика админа {target_id}")
+    except Exception as e:
+        logger.error(f"ADMIN_STAT_PDF: ошибка: {e}", exc_info=True)
+        try:
+            await callback.message.answer(f"❌ Ошибка при формировании файла: {e}")
+        except Exception:
+            pass
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
 
 
 @router.callback_query(F.data.startswith("admin_stat_date_"))

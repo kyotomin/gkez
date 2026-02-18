@@ -812,7 +812,10 @@ async def get_accounts_availability_all() -> list[dict]:
                       c.name as category_name,
                       c.price as category_price,
                       s.used_signatures,
-                      COALESCE(s.max_signatures, c.max_signatures) as effective_max
+                      COALESCE(s.max_signatures, c.max_signatures) as effective_max,
+                      COALESCE((SELECT SUM(o.price_paid) FROM orders o
+                                WHERE o.account_id = a.id AND o.category_id = c.id
+                                AND o.status != 'rejected'), 0) as real_revenue
                FROM accounts a
                JOIN account_signatures s ON a.id = s.account_id
                JOIN categories c ON s.category_id = c.id
@@ -831,7 +834,10 @@ async def get_accounts_availability_by_date(date_str: str) -> list[dict]:
                       c.name as category_name,
                       c.price as category_price,
                       s.used_signatures,
-                      COALESCE(s.max_signatures, c.max_signatures) as effective_max
+                      COALESCE(s.max_signatures, c.max_signatures) as effective_max,
+                      COALESCE((SELECT SUM(o.price_paid) FROM orders o
+                                WHERE o.account_id = a.id AND o.category_id = c.id
+                                AND o.status != 'rejected'), 0) as real_revenue
                FROM accounts a
                JOIN account_signatures s ON a.id = s.account_id
                JOIN categories c ON s.category_id = c.id
@@ -963,7 +969,10 @@ async def get_accounts_availability_by_phones(phones: list[str]) -> list[dict]:
                       c.name as category_name,
                       c.price as category_price,
                       s.used_signatures,
-                      COALESCE(s.max_signatures, c.max_signatures) as effective_max
+                      COALESCE(s.max_signatures, c.max_signatures) as effective_max,
+                      COALESCE((SELECT SUM(o.price_paid) FROM orders o
+                                WHERE o.account_id = a.id AND o.category_id = c.id
+                                AND o.status != 'rejected'), 0) as real_revenue
                FROM accounts a
                JOIN account_signatures s ON a.id = s.account_id
                JOIN categories c ON s.category_id = c.id

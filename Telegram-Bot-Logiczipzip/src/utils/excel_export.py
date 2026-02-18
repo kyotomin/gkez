@@ -68,11 +68,11 @@ def generate_availability_excel(rows: list[dict], title: str = "Наличие")
             accounts[phone] = {}
             account_passwords[phone] = r.get("password", "")
         remaining = r["effective_max"] - r["used_signatures"]
-        price = r.get("category_price", 0) or 0
+        real_rev = float(r.get("real_revenue", 0) or 0)
         accounts[phone][r["category_name"]] = {
             "remaining": remaining,
             "max": r["effective_max"],
-            "price": price,
+            "revenue": real_rev,
         }
 
     green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
@@ -92,9 +92,8 @@ def generate_availability_excel(rows: list[dict], title: str = "Наличие")
         row_total = 0.0
         for cat_idx, cat in enumerate(categories):
             col = 3 + cat_idx
-            data = accounts[phone].get(cat, {"remaining": 0, "max": 0, "price": 0})
-            used = data["max"] - data["remaining"]
-            cat_revenue = used * float(data["price"])
+            data = accounts[phone].get(cat, {"remaining": 0, "max": 0, "revenue": 0})
+            cat_revenue = data["revenue"]
             row_total += cat_revenue
             cell_val = f"{data['remaining']}/{data['max']} - {_fmt_price(cat_revenue)}"
             cell = ws.cell(row=row_idx, column=col, value=cell_val)
