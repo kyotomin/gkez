@@ -11,3 +11,7 @@ venv/
 *.sqlite3
 data/
 bot_sqlite.db
+.replit
+replit.md
+.git
+attached_assets/
