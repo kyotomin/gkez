@@ -173,6 +173,15 @@ async def increment_signatures_sent(order_id: int):
         )
 
 
+async def set_signatures_sent(order_id: int, count: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE orders SET signatures_sent = $1 WHERE id = $2",
+            count, order_id
+        )
+
+
 async def start_claim(order_id: int, qty: int):
     pool = await get_pool()
     async with pool.acquire() as conn:

@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 
 from src.db.admins import is_admin
 from src.db.operators import is_operator, get_order_operator_ids, get_ticket_operator_ids
-from src.db.orders import get_order, update_order_status, increment_signatures_sent
+from src.db.orders import get_order, update_order_status, increment_signatures_sent, set_signatures_sent
 from src.db.tickets import get_all_tickets
 from src.keyboards.admin_kb import operator_tickets_kb
 from src.states.user_states import OperatorStates
@@ -78,15 +78,12 @@ async def operator_sig_done(callback: CallbackQuery):
         await callback.answer("ℹ️ Заказ уже обработан", show_alert=True)
         return
     current_sent = order.get("signatures_sent", 0)
-    current_claimed = order.get("signatures_claimed", 0)
     total = order.get("total_signatures", 1)
-    if current_sent >= current_claimed:
-        await callback.answer("ℹ️ Все отправленные подписи уже подтверждены", show_alert=True)
+    target_sent = min(sig_num, total)
+    if target_sent <= current_sent:
+        await callback.answer("ℹ️ Эти подписи уже подтверждены", show_alert=True)
         return
-    if current_sent >= total:
-        await callback.answer("ℹ️ Все подписи уже подтверждены", show_alert=True)
-        return
-    await increment_signatures_sent(order_id)
+    await set_signatures_sent(order_id, target_sent)
     order = await get_order(order_id)
     confirmed = order.get("signatures_sent", 0)
     total = order.get("total_signatures", 1)
