@@ -974,6 +974,146 @@ async def get_accounts_availability_by_phones(phones: list[str]) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+async def get_operators_with_account_counts() -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT o.telegram_id, o.username, o.role,
+                      COUNT(a.id) as account_count
+               FROM operators o
+               LEFT JOIN accounts a ON a.operator_telegram_id = o.telegram_id
+               GROUP BY o.telegram_id, o.username, o.role
+               ORDER BY account_count DESC, o.username"""
+        )
+        return [dict(r) for r in rows]
+
+
+async def get_accounts_by_operator(operator_telegram_id: int) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT * FROM accounts
+               WHERE operator_telegram_id = $1
+               ORDER BY created_at DESC""",
+            operator_telegram_id
+        )
+        return [dict(r) for r in rows]
+
+
+async def get_availability_by_operator(operator_telegram_id: int) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT a.id, a.phone, a.password, a.created_at,
+                      c.name as category_name,
+                      c.price as category_price,
+                      s.used_signatures,
+                      COALESCE(s.max_signatures, c.max_signatures) as effective_max
+               FROM accounts a
+               JOIN account_signatures s ON a.id = s.account_id
+               JOIN categories c ON s.category_id = c.id
+               WHERE a.operator_telegram_id = $1
+               ORDER BY a.phone, c.name""",
+            operator_telegram_id
+        )
+        return [dict(r) for r in rows]
+
+
+async def get_sales_by_operator(operator_telegram_id: int, date_from: str = None, date_to: str = None) -> list[dict]:
+    from datetime import date as _date
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conditions = ["o.status != 'rejected'", "a.operator_telegram_id = $1"]
+        params = [operator_telegram_id]
+        idx = 2
+        if date_from:
+            conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date >= ${idx}")
+            params.append(_date.fromisoformat(date_from))
+            idx += 1
+        if date_to:
+            conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date <= ${idx}")
+            params.append(_date.fromisoformat(date_to))
+            idx += 1
+        where = " AND ".join(conditions)
+        rows = await conn.fetch(
+            f"""SELECT a.id as account_id, a.phone, a.password,
+                       c.name as category_name,
+                       c.price as category_price,
+                       COUNT(o.id) as sold_count,
+                       SUM(o.total_signatures) as total_sigs_sold,
+                       SUM(o.price_paid) as revenue,
+                       COALESCE(s.max_signatures, c.max_signatures) as effective_max,
+                       s.used_signatures
+                FROM orders o
+                JOIN accounts a ON o.account_id = a.id
+                JOIN categories c ON o.category_id = c.id
+                JOIN account_signatures s ON s.account_id = a.id AND s.category_id = c.id
+                WHERE {where}
+                GROUP BY a.id, a.phone, a.password, c.name, c.price, s.max_signatures, c.max_signatures, s.used_signatures
+                ORDER BY a.phone, c.name""",
+            *params
+        )
+        return [dict(r) for r in rows]
+
+
+async def get_operator_summary_stats(operator_telegram_id: int, date_from: str = None, date_to: str = None) -> dict:
+    from datetime import date as _date
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conditions = ["o.status != 'rejected'", "a.operator_telegram_id = $1"]
+        params = [operator_telegram_id]
+        idx = 2
+        if date_from:
+            conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date >= ${idx}")
+            params.append(_date.fromisoformat(date_from))
+            idx += 1
+        if date_to:
+            conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date <= ${idx}")
+            params.append(_date.fromisoformat(date_to))
+            idx += 1
+        where = " AND ".join(conditions)
+        row = await conn.fetchrow(
+            f"""SELECT COUNT(DISTINCT o.id) as total_orders,
+                       COALESCE(SUM(o.total_signatures), 0) as total_signatures,
+                       COALESCE(SUM(o.price_paid), 0) as total_revenue,
+                       COUNT(DISTINCT a.id) as accounts_used
+                FROM orders o
+                JOIN accounts a ON o.account_id = a.id
+                WHERE {where}""",
+            *params
+        )
+        account_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM accounts WHERE operator_telegram_id = $1",
+            operator_telegram_id
+        )
+        completed_conditions = ["a.operator_telegram_id = $1", "o.status = 'completed'"]
+        completed_params = [operator_telegram_id]
+        cidx = 2
+        if date_from:
+            completed_conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date >= ${cidx}")
+            completed_params.append(_date.fromisoformat(date_from))
+            cidx += 1
+        if date_to:
+            completed_conditions.append(f"(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow')::date <= ${cidx}")
+            completed_params.append(_date.fromisoformat(date_to))
+            cidx += 1
+        completed_where = " AND ".join(completed_conditions)
+        completed = await conn.fetchval(
+            f"""SELECT COUNT(DISTINCT o.id) FROM orders o
+                JOIN accounts a ON o.account_id = a.id
+                WHERE {completed_where}""",
+            *completed_params
+        )
+        return {
+            "total_orders": row["total_orders"] if row else 0,
+            "total_signatures": int(row["total_signatures"]) if row else 0,
+            "total_revenue": float(row["total_revenue"]) if row else 0.0,
+            "accounts_used": row["accounts_used"] if row else 0,
+            "total_accounts": account_count or 0,
+            "completed_orders": completed or 0,
+        }
+
+
 async def get_availability_summary() -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:

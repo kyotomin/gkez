@@ -87,6 +87,7 @@ def admin_accounts_menu_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="➕ Добавить аккаунты", callback_data="admin_add_accounts"),
             InlineKeyboardButton(text="📋 Все аккаунты", callback_data="admin_all_accounts"),
         ],
+        [InlineKeyboardButton(text="👷 По операторам", callback_data="admin_accs_by_operator")],
         [InlineKeyboardButton(text="🔍 Поиск по номеру", callback_data="admin_search_account")],
         [InlineKeyboardButton(text="📊 Наличие", callback_data="admin_availability")],
         [InlineKeyboardButton(text="🔄 Изменить лимиты всех", callback_data="admin_bulk_limits")],
@@ -568,6 +569,7 @@ def admin_stats_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📥 Выгрузка (сегодня)", callback_data="admin_export_today")],
         [InlineKeyboardButton(text="📱 Выгрузка по номерам", callback_data="admin_export_phones")],
         [InlineKeyboardButton(text="📊 Выгрузка продаж", callback_data="admin_sales_export")],
+        [InlineKeyboardButton(text="👷 Статистика операторов", callback_data="admin_op_stats")],
         [InlineKeyboardButton(text="👑 Статистика админов", callback_data="admin_stats_admins")],
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_menu")],
@@ -608,3 +610,73 @@ def admin_channel_detail_kb(channel_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"admin_del_channel_{channel_id}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_channels")],
     ])
+
+
+def admin_op_stats_select_kb(operators: list[dict]) -> InlineKeyboardMarkup:
+    buttons = []
+    for op in operators:
+        name = f"@{op['username']}" if op.get("username") else str(op["telegram_id"])
+        cnt = op.get("account_count", 0)
+        buttons.append([InlineKeyboardButton(
+            text=f"👷 {name} ({cnt} акк.)",
+            callback_data=f"admin_op_stat_{op['telegram_id']}"
+        )])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_stats")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def admin_op_stats_period_kb(operator_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📅 За сегодня", callback_data=f"op_stat_today_{operator_id}")],
+        [InlineKeyboardButton(text="📆 За неделю", callback_data=f"op_stat_week_{operator_id}")],
+        [InlineKeyboardButton(text="🗓 За месяц", callback_data=f"op_stat_month_{operator_id}")],
+        [InlineKeyboardButton(text="📋 За всё время", callback_data=f"op_stat_all_{operator_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_op_stats")],
+    ])
+
+
+def admin_op_stat_result_kb(operator_id: int, period: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📥 Выгрузка Excel", callback_data=f"op_stat_export_{period}_{operator_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_op_stat_{operator_id}")],
+    ])
+
+
+def admin_accs_by_operator_kb(operators: list[dict]) -> InlineKeyboardMarkup:
+    buttons = []
+    for op in operators:
+        name = f"@{op['username']}" if op.get("username") else str(op["telegram_id"])
+        cnt = op.get("account_count", 0)
+        buttons.append([InlineKeyboardButton(
+            text=f"👷 {name} ({cnt} акк.)",
+            callback_data=f"admin_op_accs_{op['telegram_id']}"
+        )])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_accounts")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def admin_op_accs_detail_kb(operator_id: int, accounts: list[dict], page: int = 0, per_page: int = 20) -> InlineKeyboardMarkup:
+    buttons = []
+    start = page * per_page
+    end = start + per_page
+    page_accounts = accounts[start:end]
+    for acc in page_accounts:
+        star = "⭐ " if acc.get("priority", 0) > 0 else ""
+        disabled = "🚫 " if not acc.get("is_enabled", 1) else ""
+        buttons.append([InlineKeyboardButton(
+            text=f"{disabled}{star}📱 {acc['phone']}",
+            callback_data=f"admin_acc_{acc['id']}"
+        )])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_op_accs_page_{operator_id}_{page - 1}"))
+    if end < len(accounts):
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_op_accs_page_{operator_id}_{page + 1}"))
+    if nav:
+        buttons.append(nav)
+    buttons.append([
+        InlineKeyboardButton(text="📊 Наличие", callback_data=f"admin_op_avail_{operator_id}"),
+        InlineKeyboardButton(text="📥 Продажи", callback_data=f"admin_op_sales_{operator_id}"),
+    ])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_accs_by_operator")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

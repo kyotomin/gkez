@@ -42,6 +42,8 @@ from src.db.accounts import (
     mass_enable_by_phones, mass_disable_by_phones, get_accounts_count_by_status,
     get_accounts_availability_by_phones, get_availability_summary,
     update_account_totp,
+    get_operators_with_account_counts, get_accounts_by_operator,
+    get_availability_by_operator, get_sales_by_operator, get_operator_summary_stats,
 )
 from src.db.orders import get_all_orders, get_order, update_order_status, get_preorders_with_users, cancel_preorder, get_user_orders, set_order_totp_limit, get_order_totp_limit, compute_effective_totp_limit, reduce_order_signatures, reset_totp_refreshes, search_orders
 from src.db.tickets import get_all_tickets, get_ticket, get_ticket_messages, add_ticket_message, close_ticket, search_tickets
@@ -64,6 +66,8 @@ from src.keyboards.admin_kb import (
     admin_reviews_kb, admin_review_detail_kb,
     admin_availability_kb, admin_stats_menu_kb, admin_stats_date_kb,
     admin_sales_period_kb, admin_channels_kb, admin_channel_detail_kb,
+    admin_op_stats_select_kb, admin_op_stats_period_kb, admin_op_stat_result_kb,
+    admin_accs_by_operator_kb, admin_op_accs_detail_kb,
 )
 from src.db.operators import add_operator, remove_operator, get_all_operators, is_operator, update_operator_role, get_operator, toggle_operator_notifications
 from src.db.reputation import get_all_reputation_links, get_reputation_link, add_reputation_link, update_reputation_link, delete_reputation_link
@@ -5978,3 +5982,327 @@ async def admin_stat_date_process(message: Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data == "admin_op_stats")
+async def admin_op_stats_menu(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    operators = await get_operators_with_account_counts()
+    if not operators:
+        try:
+            await callback.message.edit_text(
+                "👷 <b>Статистика операторов</b>\n\nНет операторов.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_stats")],
+                ]),
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+        return
+    try:
+        await callback.message.edit_text(
+            "👷 <b>Статистика операторов</b>\n\nВыберите оператора:",
+            reply_markup=admin_op_stats_select_kb(operators),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_op_stat_(\d+)$"))
+async def admin_op_stat_select(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    op_id = int(_re.match(r"^admin_op_stat_(\d+)$", callback.data).group(1))
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    try:
+        await callback.message.edit_text(
+            f"👷 <b>Статистика: {name}</b>\n\nВыберите период:",
+            reply_markup=admin_op_stats_period_kb(op_id),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.regexp(r"^op_stat_(today|week|month|all)_(\d+)$"))
+async def admin_op_stat_period(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    m = _re.match(r"^op_stat_(today|week|month|all)_(\d+)$", callback.data)
+    if not m:
+        await callback.answer("❌ Ошибка")
+        return
+    period = m.group(1)
+    op_id = int(m.group(2))
+    from datetime import timezone
+    msk = timezone(timedelta(hours=3))
+    today = datetime.now(msk).date()
+    if period == "today":
+        date_from = str(today)
+        date_to = str(today)
+        period_label = f"за {today}"
+    elif period == "week":
+        date_from = str(today - timedelta(days=7))
+        date_to = str(today)
+        period_label = f"за неделю ({date_from} — {date_to})"
+    elif period == "month":
+        date_from = str(today - timedelta(days=30))
+        date_to = str(today)
+        period_label = f"за месяц ({date_from} — {date_to})"
+    else:
+        date_from = None
+        date_to = None
+        period_label = "за всё время"
+    await callback.answer("⏳ Загрузка...")
+    stats = await get_operator_summary_stats(op_id, date_from, date_to)
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    text = (
+        f"👷 <b>Статистика: {name}</b>\n"
+        f"📅 Период: {period_label}\n\n"
+        f"📦 Всего аккаунтов: {stats['total_accounts']}\n"
+        f"📝 Заказов: {stats['total_orders']}\n"
+        f"✅ Завершено: {stats['completed_orders']}\n"
+        f"🖊 Подписей продано: {stats['total_signatures']}\n"
+        f"💰 Выручка: ${stats['total_revenue']:.2f}\n"
+        f"📱 Аккаунтов задействовано: {stats['accounts_used']}"
+    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=admin_op_stat_result_kb(op_id, period),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+
+
+@router.callback_query(F.data.regexp(r"^op_stat_export_(today|week|month|all)_(\d+)$"))
+async def admin_op_stat_export(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    m = _re.match(r"^op_stat_export_(today|week|month|all)_(\d+)$", callback.data)
+    if not m:
+        await callback.answer("❌ Ошибка")
+        return
+    period = m.group(1)
+    op_id = int(m.group(2))
+    from datetime import timezone
+    msk = timezone(timedelta(hours=3))
+    today = datetime.now(msk).date()
+    if period == "today":
+        date_from = str(today)
+        date_to = str(today)
+        period_label = f"за {today}"
+    elif period == "week":
+        date_from = str(today - timedelta(days=7))
+        date_to = str(today)
+        period_label = f"за неделю"
+    elif period == "month":
+        date_from = str(today - timedelta(days=30))
+        date_to = str(today)
+        period_label = f"за месяц"
+    else:
+        date_from = None
+        date_to = None
+        period_label = "за всё время"
+    await callback.answer("⏳ Формируется файл...")
+    rows = await get_sales_by_operator(op_id, date_from, date_to)
+    if not rows:
+        try:
+            await callback.message.answer("📊 Нет данных о продажах за выбранный период.")
+        except Exception:
+            pass
+        return
+    import os
+    from src.utils.excel_export import generate_sales_excel
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    title = f"Продажи {name} {period_label}"
+    fname = f"Продажи {name} {period_label}.xlsx"
+    path = None
+    try:
+        path = generate_sales_excel(rows, title=title)
+        from aiogram.types import FSInputFile
+        doc = FSInputFile(path, filename=fname)
+        await callback.message.answer_document(doc, caption=f"📥 {title}")
+    except Exception as e:
+        logger.error(f"OP_STAT_EXPORT: ошибка: {e}", exc_info=True)
+        try:
+            await callback.message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
+
+
+@router.callback_query(F.data == "admin_accs_by_operator")
+async def admin_accs_by_operator_menu(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    operators = await get_operators_with_account_counts()
+    if not operators:
+        try:
+            await callback.message.edit_text(
+                "👷 <b>Аккаунты по операторам</b>\n\nНет операторов.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_accounts")],
+                ]),
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+        return
+    try:
+        await callback.message.edit_text(
+            "👷 <b>Аккаунты по операторам</b>\n\nВыберите оператора:",
+            reply_markup=admin_accs_by_operator_kb(operators),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_op_accs_(\d+)$"))
+async def admin_op_accs_list(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    m = _re.match(r"^admin_op_accs_(\d+)$", callback.data)
+    op_id = int(m.group(1))
+    accounts = await get_accounts_by_operator(op_id)
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    if not accounts:
+        try:
+            await callback.message.edit_text(
+                f"👷 <b>Аккаунты: {name}</b>\n\nНет аккаунтов.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_accs_by_operator")],
+                ]),
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+        return
+    try:
+        await callback.message.edit_text(
+            f"👷 <b>Аккаунты: {name}</b>\n\n📱 Всего: {len(accounts)}",
+            reply_markup=admin_op_accs_detail_kb(op_id, accounts, page=0),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_op_accs_page_(\d+)_(\d+)$"))
+async def admin_op_accs_page(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    m = _re.match(r"^admin_op_accs_page_(\d+)_(\d+)$", callback.data)
+    op_id = int(m.group(1))
+    page = int(m.group(2))
+    accounts = await get_accounts_by_operator(op_id)
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    try:
+        await callback.message.edit_text(
+            f"👷 <b>Аккаунты: {name}</b>\n\n📱 Всего: {len(accounts)}",
+            reply_markup=admin_op_accs_detail_kb(op_id, accounts, page=page),
+            parse_mode="HTML",
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_op_avail_(\d+)$"))
+async def admin_op_availability_export(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    m = _re.match(r"^admin_op_avail_(\d+)$", callback.data)
+    op_id = int(m.group(1))
+    await callback.answer("⏳ Формируется файл...")
+    rows = await get_availability_by_operator(op_id)
+    if not rows:
+        try:
+            await callback.message.answer("📊 Нет данных о наличии.")
+        except Exception:
+            pass
+        return
+    import os
+    from src.utils.excel_export import generate_availability_excel
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    title = f"Наличие {name}"
+    fname = f"Наличие {name}.xlsx"
+    path = None
+    try:
+        path = generate_availability_excel(rows, title=title)
+        from aiogram.types import FSInputFile
+        doc = FSInputFile(path, filename=fname)
+        await callback.message.answer_document(doc, caption=f"📥 {title}")
+    except Exception as e:
+        logger.error(f"OP_AVAIL_EXPORT: ошибка: {e}", exc_info=True)
+        try:
+            await callback.message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
+
+
+@router.callback_query(F.data.regexp(r"^admin_op_sales_(\d+)$"))
+async def admin_op_sales_export(callback: CallbackQuery):
+    if not await AdminFilter.check(callback.from_user.id):
+        return
+    import re as _re
+    m = _re.match(r"^admin_op_sales_(\d+)$", callback.data)
+    op_id = int(m.group(1))
+    await callback.answer("⏳ Формируется файл...")
+    rows = await get_sales_by_operator(op_id)
+    if not rows:
+        try:
+            await callback.message.answer("📊 Нет данных о продажах.")
+        except Exception:
+            pass
+        return
+    import os
+    from src.utils.excel_export import generate_sales_excel
+    op = await get_operator(op_id)
+    name = f"@{op['username']}" if op and op.get("username") else str(op_id)
+    title = f"Продажи {name}"
+    fname = f"Продажи {name}.xlsx"
+    path = None
+    try:
+        path = generate_sales_excel(rows, title=title)
+        from aiogram.types import FSInputFile
+        doc = FSInputFile(path, filename=fname)
+        await callback.message.answer_document(doc, caption=f"📥 {title}")
+    except Exception as e:
+        logger.error(f"OP_SALES_EXPORT: ошибка: {e}", exc_info=True)
+        try:
+            await callback.message.answer("❌ Ошибка при формировании файла.")
+        except Exception:
+            pass
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
